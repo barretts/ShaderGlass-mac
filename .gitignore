@@ -1,0 +1,26 @@
+# Vendored upstream dependency checkouts (fetched / rebuildable; each has its own .git)
+deps/glslang/
+deps/SPIRV-Cross/
+
+# Compiled probes, test binaries, and the demo binary
+deps/check_msl
+deps/*.o
+spike/spike
+backend/backend_test
+capture/capture_test
+demo/demo
+
+# Generated render outputs (regenerate via demo/build.sh)
+demo/out/
+
+# Logs, object files, compiled shader libs
+**/.logs/
+**/*.o
+*.metallib
+
+# Local commit-message scratch file
+.gitmsg
+
+# macOS Finder cruft
+.DS_Store
+**/.DS_Store
