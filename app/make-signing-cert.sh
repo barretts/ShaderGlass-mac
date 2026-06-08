@@ -9,7 +9,10 @@ trap 'rm -rf "$WORK"' EXIT
 NAME="ShaderGlassDev"
 LOGIN_KC="$HOME/Library/Keychains/login.keychain-db"
 
-if security find-identity -v -p codesigning 2>/dev/null | grep -q "$NAME"; then
+# Detect with `-p codesigning` WITHOUT `-v`: a self-signed cert is usable for signing
+# but never lists under "valid identities only" (it is not chain-trusted). This MUST
+# match build.sh's detection or a re-run would duplicate-import (B2).
+if security find-identity -p codesigning 2>/dev/null | grep -q "$NAME"; then
   echo "identity '$NAME' already present — nothing to do"
   exit 0
 fi
@@ -27,13 +30,20 @@ echo "generating self-signed code-signing cert '$NAME' (using $SSL)..."
 P12PASS="shaderglass"
 "$SSL" pkcs12 -export -out "$WORK/id.p12" -inkey "$WORK/key.pem" -in "$WORK/cert.pem" -passout pass:"$P12PASS"
 
-# Import cert+key; allow codesign to use the key without prompting.
-security import "$WORK/id.p12" -k "$LOGIN_KC" -P "$P12PASS" -T /usr/bin/codesign -A
+# Import cert+key, scoped to codesign only via `-T` (NOT `-A`, which would grant EVERY
+# app access to the signing key -- over-broad, REVIEW S2). TCC keys on the cdhash, which
+# only needs the identity present + usable for signing; chain trust is irrelevant, so we
+# deliberately do NOT install a trusted root (REVIEW S1 -- add-trusted-cert -r trustAsRoot
+# would expand the user's trust store for no benefit here).
+security import "$WORK/id.p12" -k "$LOGIN_KC" -P "$P12PASS" -T /usr/bin/codesign
 
-# Trust the cert for code signing (user-level; may pop a Keychain auth dialog once).
-security add-trusted-cert -r trustAsRoot -p codeSign -k "$LOGIN_KC" "$WORK/cert.pem" || \
-  echo "NOTE: add-trusted-cert needs a one-time Keychain confirmation; if it failed, open Keychain Access, find '$NAME', and set 'Code Signing: Always Trust'."
+echo "=== identity now present (lists as not-chain-trusted; that is expected and fine) ==="
+security find-identity -p codesigning 2>&1 | grep "$NAME" || \
+  echo "WARN: '$NAME' did not import; check the security import output above."
 
-echo "=== identities now available ==="
-security find-identity -v -p codesigning 2>&1 | grep "$NAME" || \
-  echo "WARN: '$NAME' not yet listed as valid — trust may need the manual Keychain step above."
+cat <<'NOTE'
+Done. build.sh will sign with "ShaderGlassDev" (stable cdhash -> Screen Recording grant
+survives rebuilds). If codesign ever prompts for keychain access, run:
+  security set-key-partition-list -S apple-tool:,apple: -s -k "<login-password>" "$HOME/Library/Keychains/login.keychain-db"
+(scoped to the signing tools -- do NOT re-add -A).
+NOTE

@@ -8,6 +8,18 @@ upstream Windows tree is untouched._
 Metal shader (passthrough or a hand-ported CRT) in a resizable GUI. Visually confirmed on an
 Apple M3 Max.**
 
+**Review remediation (see `REVIEW.md` + `FIX-PLAN.md`): all three CRITICAL findings and the major
+present-path/signing issues are FIXED.** The capture path now uses one owning render queue (atomic
+`_capturing`, work marshaled onto the SCKCapture serial queue) with a synchronous teardown drain
+(C1/C3); constant buffers are ring-buffered and `BeginFrame` self-cleans abandoned frames under the
+no-wait present (C2/J1/J2/J3); sampler default is Nearest to match the engine (D1); the MTLDevice is
+shared with capture (J7); `Start` is async (J6); signing dropped the trusted-root + `-A` and the
+build fails loudly on a bad signature (S1/S2/S3). Verified: 4 regression suites PASS, selftest golden
+byte-identical, app runs clean under Metal validation. **Still pending: a ThreadSanitizer + live
+resize/stop-start stress run on device** (Phase 5) for definitive race-freedom proof — the fixes are
+correct by construction and pass all auto-checks, but the live race frequency can only be measured
+with a granted TCC permission on hardware.
+
 ---
 
 ## What works today (verified on hardware)

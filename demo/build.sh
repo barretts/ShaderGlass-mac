@@ -3,7 +3,7 @@
 set -e
 cd "$(dirname "$0")"
 mkdir -p .logs out
-SDK="/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
+SDK="$(xcrun --sdk macosx --show-sdk-path)"   # resolve via xcrun, not a hardcoded path (REVIEW B1)
 
 clang++ -std=c++20 -fobjc-arc -arch arm64 -mmacosx-version-min=12.3 \
   -isysroot "$SDK" \

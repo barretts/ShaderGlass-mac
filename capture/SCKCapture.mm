@@ -26,13 +26,19 @@ struct CVToMetal::Impl {
     CVMetalTextureCacheRef cache  = nullptr;
     // Ring of CVMetalTextureRefs (NOT a single slot): the MTLTexture returned by
     // CVMetalTextureGetTexture only keeps its IOSurface pinned while its
-    // CVMetalTextureRef is alive. With frames in flight (SCStream queueDepth >= 2,
-    // mirroring the Windows depth-2 frame pool) a single slot would release the
-    // surface of a frame the GPU is still sampling. We keep RING_DEPTH refs alive,
-    // releasing each only after RING_DEPTH newer frames have been produced -- which,
-    // combined with the per-pass waitUntilCompleted in MetalBackend, guarantees the
-    // GPU finished sampling a frame before its ref is reclaimed.
+    // CVMetalTextureRef is alive. A single slot would release the surface of a frame
+    // the GPU is still sampling.
+    //
+    // CORRECT INVARIANT (REVIEW C2): the live present path does NOT waitUntilCompleted
+    // (MetalBackend::Present commits without waiting), so a ref is released after
+    // RING_DEPTH newer frames have been *produced*, not after the GPU finished. That is
+    // safe ONLY because RING_DEPTH strictly exceeds the maximum frames the GPU can have
+    // in flight, which is bounded by the layer's maximumDrawableCount (3). So a ref
+    // survives at least RING_DEPTH frames, comfortably past the <=3 in-flight drawables
+    // that could still be sampling it. The static_assert below enforces the margin; if
+    // maximumDrawableCount or queueDepth grows, RING_DEPTH must grow too.
     static constexpr int RING_DEPTH = 4;
+    static_assert(RING_DEPTH > 3, "RING_DEPTH must exceed CAMetalLayer.maximumDrawableCount (3)");
     CVMetalTextureRef     ring[RING_DEPTH] = {nullptr};
     int                   ringPos = 0;
 };
@@ -181,6 +187,7 @@ struct SCKCapture::Impl {
     IRenderBackend* backend = nullptr;
     FrameSink       sink;
     CVToMetal       conv;
+    void*           sharedDevice = nullptr;
 #if __has_include(<ScreenCaptureKit/ScreenCaptureKit.h>)
     SCStream*           stream   = nil;
     SGCaptureDelegate*  delegate = nil;
@@ -190,9 +197,23 @@ struct SCKCapture::Impl {
 #endif
 };
 
-SCKCapture::SCKCapture(IRenderBackend* backend, FrameSink sink) : p(new Impl) {
-    p->backend = backend;
-    p->sink    = std::move(sink);
+SCKCapture::SCKCapture(IRenderBackend* backend, FrameSink sink, void* sharedDevice) : p(new Impl) {
+    p->backend      = backend;
+    p->sink         = std::move(sink);
+    p->sharedDevice = sharedDevice;
+#if __has_include(<ScreenCaptureKit/ScreenCaptureKit.h>)
+    // Create the serial render queue up front so RenderQueue() is valid before Start
+    // and stable across Start/Stop. The FrameSink runs here; it IS the render thread.
+    p->queue = dispatch_queue_create("net.shaderglass.capture", DISPATCH_QUEUE_SERIAL);
+#endif
+}
+
+void* SCKCapture::RenderQueue() const {
+#if __has_include(<ScreenCaptureKit/ScreenCaptureKit.h>)
+    return (__bridge void*)p->queue;
+#else
+    return nullptr;
+#endif
 }
 
 SCKCapture::~SCKCapture() {
@@ -237,11 +258,13 @@ static SCStreamConfiguration* makeConfig(uint32_t w, uint32_t h, bool maxRate, b
 
 bool SCKCapture::Start(const CaptureTarget& target, bool maxCaptureRate, bool captureCursor) {
     if (@available(macOS 12.3, *)) {
-        if (!p->conv.Initialize(MTLCreateSystemDefaultDevice())) return false;
+        // Share the backend's MTLDevice (J7); fall back to system default only if none given.
+        id<MTLDevice> dev = p->sharedDevice ? (__bridge id<MTLDevice>)p->sharedDevice
+                                            : MTLCreateSystemDefaultDevice();
+        if (!p->conv.Initialize(dev)) return false;
         p->maxRate = maxCaptureRate;
         p->cursor  = captureCursor;
-        if (!p->queue)
-            p->queue = dispatch_queue_create("net.shaderglass.capture", DISPATCH_QUEUE_SERIAL);
+        // p->queue created in the ctor; it is the render thread and outlives Start/Stop.
 
         p->delegate = [SGCaptureDelegate new];
         p->delegate->_conv    = &p->conv;
@@ -250,16 +273,19 @@ bool SCKCapture::Start(const CaptureTarget& target, bool maxCaptureRate, bool ca
         p->delegate->_frameNo = 0;
         p->delegate->_lastW = p->delegate->_lastH = 0;
 
-        // Re-query the shareable content to resolve the target into an SCContentFilter.
-        // (Synchronous resolution would be cleaner with a cached snapshot from
-        // QueryShareableContent; re-querying keeps Start self-contained.)
-        __block bool started = false;
-        dispatch_semaphore_t done = dispatch_semaphore_create(0);
+        // Resolve the target into an SCContentFilter ASYNCHRONOUSLY. Start returns
+        // immediately (it does NOT block the caller -- the old 5s semaphore wait could
+        // beachball the main thread, REVIEW J6). All stream setup happens in the
+        // completion handler; failures surface via stderr / the delegate's
+        // didStopWithError. Stream fields are mutated on the SCK callback thread; they
+        // are only read on the main thread under the synchronous-Stop drain.
         CaptureTarget t = target;
-        IRenderBackend* backend = p->backend;
-        (void)backend;
         [SCShareableContent getShareableContentWithCompletionHandler:^(SCShareableContent* content, NSError* e) {
-            if (!content || e) { dispatch_semaphore_signal(done); return; }
+            if (!content || e) {
+                fprintf(stderr, "SCKCapture: getShareableContent failed (Screen Recording not granted?): %s\n",
+                        e ? e.localizedDescription.UTF8String : "no content");
+                return;
+            }
             SCContentFilter* filter = nil;
             uint32_t cw = 0, ch = 0;
             if (t.kind == CaptureTargetKind::Display) {
@@ -279,36 +305,43 @@ bool SCKCapture::Start(const CaptureTarget& target, bool maxCaptureRate, bool ca
                     }
                 }
             }
-            if (!filter) { dispatch_semaphore_signal(done); return; }
+            if (!filter) { fprintf(stderr, "SCKCapture: target %u not found in shareable content\n", (unsigned)t.id); return; }
 
             SCStreamConfiguration* cfg = makeConfig(cw, ch, p->maxRate, p->cursor);
             NSError* se = nil;
-            p->stream = [[SCStream alloc] initWithFilter:filter configuration:cfg delegate:p->delegate];
-            [p->stream addStreamOutput:p->delegate type:SCStreamOutputTypeScreen
-                     sampleHandlerQueue:p->queue error:&se];
-            if (se) { fprintf(stderr, "SCKCapture: addStreamOutput failed: %s\n", se.localizedDescription.UTF8String);
-                      p->stream = nil; dispatch_semaphore_signal(done); return; }
+            SCStream* stream = [[SCStream alloc] initWithFilter:filter configuration:cfg delegate:p->delegate];
+            [stream addStreamOutput:p->delegate type:SCStreamOutputTypeScreen
+                 sampleHandlerQueue:p->queue error:&se];
+            if (se) { fprintf(stderr, "SCKCapture: addStreamOutput failed: %s\n", se.localizedDescription.UTF8String); return; }
+            p->stream = stream;
             [p->stream startCaptureWithCompletionHandler:^(NSError* err) {
                 if (err) fprintf(stderr, "SCKCapture: startCapture failed: %s\n", err.localizedDescription.UTF8String);
             }];
-            started = true;
-            dispatch_semaphore_signal(done);
         }];
-        // bounded wait for filter resolution (the async getShareableContent)
-        dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC));
-        return started;
+        return true; // accepted; capture begins asynchronously once content resolves
     }
     return false; // SCK requires 12.3+
 }
 
+// PRECONDITION: call Stop from the MAIN thread, never from the capture queue (a
+// dispatch_sync onto the current serial queue would deadlock). Today's callers
+// (toggleCapture:, applicationWillTerminate: via shutdown) are all main-thread.
 void SCKCapture::Stop() {
     if (@available(macOS 12.3, *)) {
         if (p->stream) {
-            [p->stream stopCaptureWithCompletionHandler:^(NSError*) {}];
+            // stopCapture is async; wait for it to actually stop before tearing down,
+            // so no new didOutputSampleBuffer is dispatched after this point.
+            dispatch_semaphore_t stopped = dispatch_semaphore_create(0);
+            [p->stream stopCaptureWithCompletionHandler:^(NSError*) { dispatch_semaphore_signal(stopped); }];
+            dispatch_semaphore_wait(stopped, dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC));
             p->stream = nil;
         }
+        // Drain any in-flight frame already dispatched on the render queue BEFORE we
+        // nil the delegate / flush the ring -- otherwise a running onCaptureFrameTex
+        // could touch a freed backend/ring (REVIEW C3 use-after-free).
+        if (p->queue) dispatch_sync(p->queue, ^{});
         p->delegate = nil;
-        p->conv.Flush();
+        p->conv.Flush(); // now safe: no frame can be mid-flight
     }
 }
 

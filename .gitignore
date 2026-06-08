@@ -27,3 +27,10 @@ demo/out/
 # macOS Finder cruft
 .DS_Store
 **/.DS_Store
+
+# Signing key material -- defense against an accidental cert/key export landing in the tree
+*.p12
+*.pem
+*.cer
+*.keychain
+*.keychain-db

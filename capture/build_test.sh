@@ -5,7 +5,7 @@
 set -e
 cd "$(dirname "$0")"
 mkdir -p .logs
-SDK="/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
+SDK="$(xcrun --sdk macosx --show-sdk-path)"   # resolve via xcrun, not a hardcoded path (REVIEW B1)
 
 FRAMEWORKS=(-framework Metal -framework QuartzCore -framework Foundation -framework CoreVideo -framework CoreMedia)
 # Link ScreenCaptureKit only if present (it is on 12.3+); the .mm guards its use.

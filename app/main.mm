@@ -13,12 +13,18 @@ never touches a drawable / TCC).
 
 static int runSelftest(NSString* outPath) {
     @autoreleasepool {
-        NSString* shaderDir = @"../spike";
-        NSString* img = @"../../images/screen6.png";
+        // Prefer the bundle Resources (CWD-independent); fall back to the dev-tree
+        // relative paths only if running the bare binary outside a bundle.
+        NSString* res = [[NSBundle mainBundle] resourcePath];
+        NSFileManager* fm = [NSFileManager defaultManager];
+        BOOL bundled = res && [fm fileExistsAtPath:[res stringByAppendingPathComponent:@"passthrough.metal"]];
+        NSString* shaderDir = bundled ? res : @"../spike";
+        NSString* img = bundled ? [res stringByAppendingPathComponent:@"screen6.png"]
+                                : @"../../images/screen6.png";
         // layer-less pipeline (Initialize(nil) => headless backend, present path inert)
         LivePipeline* pipe = [[LivePipeline alloc] initWithLayer:nil width:0 height:0 shaderDir:shaderDir];
-        if (!pipe) { fprintf(stderr, "selftest FAIL: pipeline init\n"); return 2; }
-        if (![pipe setStaticImagePath:img]) { fprintf(stderr, "selftest FAIL: image load\n"); return 2; }
+        if (!pipe) { fprintf(stderr, "selftest FAIL: pipeline init (shaderDir=%s)\n", shaderDir.UTF8String); return 2; }
+        if (![pipe setStaticImagePath:img]) { fprintf(stderr, "selftest FAIL: image load (%s)\n", img.UTF8String); return 2; }
         if (![pipe renderOffscreenToPNG:outPath]) { fprintf(stderr, "selftest FAIL: offscreen render\n"); return 1; }
         fprintf(stderr, "selftest OK: wrote %s\n", outPath.UTF8String);
         return 0;

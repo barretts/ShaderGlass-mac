@@ -28,8 +28,15 @@ struct MShader {
     MTLVertexDescriptor* vdesc;
     NSMutableDictionary<NSNumber*, id<MTLRenderPipelineState>>* psoCache; // key: fmt<<1 | blend
 };
-struct MBuffer  { id<MTLBuffer> buf; };
+// A constant/vertex buffer. For dynamic constant buffers we allocate kFramesInFlight
+// ring slots in one MTLBuffer (slotStride bytes each, 256-aligned for constant-buffer
+// offset rules) so the no-wait present path never overwrites a slot the GPU is still
+// reading from an in-flight frame. Vertex buffers use slot 0 only (slotStride==0).
+struct MBuffer  { id<MTLBuffer> buf; uint32_t slotStride; };
 struct MSampler { id<MTLSamplerState> samp; };
+
+// Frames the present path may keep in flight; must match layer.maximumDrawableCount.
+static constexpr uint32_t kFramesInFlight = 3;
 
 MTLPixelFormat toMTL(PixFmt f) {
     switch (f) {
@@ -84,6 +91,7 @@ struct MetalBackend::Impl {
     MTexture*                   curFrameTarget = nullptr; // heap wrapper for curDrawable.texture (freed in Present)
     bool                        curTargetIsDrawable = false; // set in BeginRenderPass; gates the no-wait present
     CGColorSpaceRef             colorSpace = nullptr;
+    uint32_t                    frameRing = 0;          // advances per BeginFrame; selects the constant-buffer slot
 };
 
 MetalBackend::MetalBackend() : p(new Impl) {}
@@ -129,8 +137,10 @@ bool MetalBackend::Initialize(void* nativeLayer, uint32_t w, uint32_t h, bool hd
     p->layer.device = p->device;
     // SDR path: BGRA8 (NON-sRGB, matches the verified raw-UNORM chain) tagged sRGB so
     // the compositor does not misread the bytes as the display's wide-gamut space.
-    // (HDR/EDR is deferred; hdr flag reserved.)
-    (void)hdr;
+    // HDR/EDR is deferred -- but don't silently honor hdr=true and return an SDR
+    // surface contrary to the interface contract; make the gap loud (REVIEW J4).
+    if (hdr)
+        fprintf(stderr, "MetalBackend: HDR requested but not implemented; using SDR BGRA8.\n");
     p->layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
     if (!p->colorSpace) p->colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
     p->layer.colorspace = p->colorSpace;
@@ -148,8 +158,17 @@ void MetalBackend::ResizeSwapChain(uint32_t w, uint32_t h) {
 
 BackendTexture* MetalBackend::BeginFrame() {
     if (!p->layer) return nullptr;                              // headless: no swap chain
+    // Self-clean: if a prior frame was abandoned between BeginFrame and Present
+    // (early return / loop-back), tear it down here so we never leak the wrapper or
+    // strand a drawable in the pool (J2). cb here is an uncommitted drawable cb -> drop it.
+    if (p->curFrameTarget) { delete p->curFrameTarget; p->curFrameTarget = nullptr; }
+    p->cb = nil;
+    p->curDrawable = nil;
+    p->curTargetIsDrawable = false;
+
     p->curDrawable = [p->layer nextDrawable];
     if (!p->curDrawable) return nullptr;                        // pool starved / 1s timeout -> caller skips frame
+    p->frameRing = (p->frameRing + 1) % kFramesInFlight;        // advance constant-buffer ring slot for this frame
     // Heap-allocate the wrapper so DestroyTexture's `delete` is always safe (the
     // borrowed-target no-op contract). Freed in Present(). NOT an interior Impl pointer.
     p->curFrameTarget = new MTexture{ p->curDrawable.texture, false };
@@ -229,6 +248,7 @@ BackendShader* MetalBackend::CreateShader(const void* vertexCode, size_t vLen,
 // format and blend mode. Key packs (format << 1 | blend-bit). Returns the PSO as
 // an opaque void* (the header stays Metal-type-free); callers __bridge back.
 void* MetalBackend::psoFor(void* shaderHandle, uint32_t mtlFmt, BlendMode blend) {
+    if (!shaderHandle) return nullptr;          // BindShader never called for this pass -> no draw
     auto* s = reinterpret_cast<MShader*>(shaderHandle);
     uint64_t key = ((uint64_t)mtlFmt << 1) | (blend == BlendMode::AlphaOver ? 1u : 0u);
     NSNumber* k = @(key);
@@ -269,13 +289,16 @@ void MetalBackend::DestroyShader(BackendShader* h) {
 
 BackendBuffer* MetalBackend::CreateVertexBuffer(const void* data, size_t size) {
     id<MTLBuffer> b = [p->device newBufferWithBytes:data length:size options:MTLResourceStorageModeShared];
-    return reinterpret_cast<BackendBuffer*>(new MBuffer{ b });
+    return reinterpret_cast<BackendBuffer*>(new MBuffer{ b, /*slotStride*/0 });
 }
 BackendBuffer* MetalBackend::CreateConstantBuffer(size_t size) {
-    size_t rounded = (size + 0xf) & ~size_t(0xf); // match engine's 16B alignment (ShaderPass.cpp:134)
-    if (rounded == 0) rounded = 16;
-    id<MTLBuffer> b = [p->device newBufferWithLength:rounded options:MTLResourceStorageModeShared];
-    return reinterpret_cast<BackendBuffer*>(new MBuffer{ b });
+    // Round each slot up to 256B (Apple GPU constant-buffer offset alignment), then
+    // allocate kFramesInFlight slots so frame N+1's UpdateConstantBuffer never clobbers
+    // a slot frame N's GPU work is still reading (the no-wait present hazard, J1).
+    size_t slot = (size + 0xffu) & ~size_t(0xffu);
+    if (slot == 0) slot = 256;
+    id<MTLBuffer> b = [p->device newBufferWithLength:slot * kFramesInFlight options:MTLResourceStorageModeShared];
+    return reinterpret_cast<BackendBuffer*>(new MBuffer{ b, (uint32_t)slot });
 }
 void MetalBackend::DestroyBuffer(BackendBuffer* h) {
     if (!h) return; auto* b = reinterpret_cast<MBuffer*>(h); b->buf = nil; delete b;
@@ -300,18 +323,34 @@ void MetalBackend::DestroySampler(BackendSampler* h) {
     if (!h) return; auto* s = reinterpret_cast<MSampler*>(h); s->samp = nil; delete s;
 }
 
+// Offset of the current frame's ring slot for a constant buffer.
+static inline NSUInteger frameSlotOffset(MBuffer* b, uint32_t frameRing) {
+    return b->slotStride ? (NSUInteger)b->slotStride * (frameRing % kFramesInFlight) : 0;
+}
+
 void MetalBackend::UpdateConstantBuffer(BackendBuffer* h, const void* data, size_t size) {
     auto* b = reinterpret_cast<MBuffer*>(h);
-    if (size > (size_t)b->buf.length) { // guard against silent heap corruption
-        fprintf(stderr, "MetalBackend: UpdateConstantBuffer size %zu exceeds buffer length %lu\n",
-                size, (unsigned long)b->buf.length);
+    NSUInteger off = frameSlotOffset(b, p->frameRing);
+    if (off + size > (size_t)b->buf.length) { // guard against silent heap corruption
+        fprintf(stderr, "MetalBackend: UpdateConstantBuffer size %zu (off %lu) exceeds buffer length %lu\n",
+                size, (unsigned long)off, (unsigned long)b->buf.length);
         return;
     }
-    memcpy(b->buf.contents, data, size); // storageShared -> CPU-visible; MVP bytes verbatim
+    // Write into THIS frame's ring slot; storageShared -> CPU-visible; MVP bytes verbatim.
+    memcpy((char*)b->buf.contents + off, data, size);
 }
 
 void MetalBackend::BeginRenderPass(BackendTexture* target, bool clear, const float clearColor[4]) {
     auto* t = reinterpret_cast<MTexture*>(target);
+    if (!t) { // BeginFrame can legitimately return nullptr (starved drawable); don't deref/crash (J3)
+        p->enc = nil; p->cb = nil; p->curTargetIsDrawable = false;
+        fprintf(stderr, "MetalBackend: BeginRenderPass on null target -- pass skipped\n");
+        return;
+    }
+    // Order-fragility guard: a live drawable cb means a prior drawable pass was never
+    // presented; entering a new pass would drop it uncommitted (REVIEW finding 7).
+    if (p->cb && p->curTargetIsDrawable)
+        fprintf(stderr, "MetalBackend: BeginRenderPass entered with a live drawable command buffer\n");
     // Drawable target => present path (no blocking commit in EndRenderPass).
     p->curTargetIsDrawable = (p->curFrameTarget != nullptr && t == p->curFrameTarget);
     p->curTargetFmt = t->tex.pixelFormat; // PSO color-attachment format follows the bound target
@@ -364,9 +403,10 @@ void MetalBackend::BindSampler(uint32_t slot, BackendSampler* h) {
     [p->enc setFragmentSamplerState:reinterpret_cast<MSampler*>(h)->samp atIndex:slot];
 }
 void MetalBackend::BindConstantBuffer(uint32_t index, BackendBuffer* h) {
-    id<MTLBuffer> b = reinterpret_cast<MBuffer*>(h)->buf;
-    [p->enc setVertexBuffer:b offset:0 atIndex:index];   // both stages, matching VS+PSSetConstantBuffers
-    [p->enc setFragmentBuffer:b offset:0 atIndex:index];
+    auto* mb = reinterpret_cast<MBuffer*>(h);
+    NSUInteger off = frameSlotOffset(mb, p->frameRing); // bind THIS frame's ring slot (must match Update)
+    [p->enc setVertexBuffer:mb->buf offset:off atIndex:index];   // both stages, matching VS+PSSetConstantBuffers
+    [p->enc setFragmentBuffer:mb->buf offset:off atIndex:index];
 }
 void MetalBackend::SetBlend(BlendMode mode) {
     // Blend is baked into the PSO; record it so Draw selects the matching variant
@@ -374,9 +414,11 @@ void MetalBackend::SetBlend(BlendMode mode) {
     p->curBlend = mode;
 }
 void MetalBackend::Draw(uint32_t vertexCount, uint32_t startVertex) {
+    if (!p->enc) return;                       // skipped/abandoned pass (e.g. null BeginRenderPass target)
     // Resolve the PSO now: format from the bound target, blend from SetBlend.
     void* pso = psoFor(p->boundShader, (uint32_t)p->curTargetFmt, p->curBlend);
-    if (pso) [p->enc setRenderPipelineState:(__bridge id<MTLRenderPipelineState>)pso];
+    if (!pso) return;                          // PSO compile failed (logged in psoFor); don't draw with stale/no pipeline (J5)
+    [p->enc setRenderPipelineState:(__bridge id<MTLRenderPipelineState>)pso];
     [p->enc drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:startVertex vertexCount:vertexCount];
 }
 

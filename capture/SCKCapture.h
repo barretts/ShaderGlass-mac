@@ -101,7 +101,11 @@ struct CaptureTarget
 class SCKCapture
 {
 public:
-    SCKCapture(IRenderBackend* backend, FrameSink sink);
+    // sharedDevice: the MTLDevice (as an opaque void*, from MetalBackend::NativeDevice())
+    // that the backend renders with. CVToMetal MUST use the same device or the captured
+    // texture cannot be sampled by the backend's pipeline (undefined on multi-GPU). If
+    // null, CVToMetal falls back to the system default device (legacy behavior).
+    SCKCapture(IRenderBackend* backend, FrameSink sink, void* sharedDevice = nullptr);
     ~SCKCapture();
 
     // Enumerate capturable displays/windows (async TCC; invokes cb on the main queue).
@@ -119,6 +123,13 @@ public:
 
     // The last delivered content size (for the engine's resize path).
     void ContentSize(uint32_t& w, uint32_t& h) const;
+
+    // The serial dispatch queue the FrameSink runs on -- the designated render
+    // thread. The owner (LivePipeline) marshals all other MetalBackend-touching work
+    // (resize, shader repaint) onto this queue while capturing, so the backend is
+    // only ever touched from one thread. Returns a dispatch_queue_t as an opaque void*
+    // (header stays ObjC-type-free); __bridge-cast at the call site. null before Start.
+    void* RenderQueue() const;
 
 private:
     struct Impl;

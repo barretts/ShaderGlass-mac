@@ -30,12 +30,13 @@ static std::string readTextFile(NSString* path) {
     return s ? std::string(s.UTF8String) : std::string();
 }
 
-// Private methods used by the FrameSink lambda before their definition.
+// Private methods used before their definition (FrameSink lambda, render-thread routing).
 @interface LivePipeline ()
 - (void)onCaptureFrameTex:(BackendTexture*)tex w:(uint32_t)w h:(uint32_t)h frame:(uint32_t)frameCount;
 - (void)drawSrc:(BackendTexture*)src toTarget:(BackendTexture*)target
            srcW:(uint32_t)sw srcH:(uint32_t)sh dstW:(uint32_t)dw dstH:(uint32_t)dh
       frameCount:(uint32_t)frameCount;
+- (void)renderFrameLocked;
 @end
 
 @implementation LivePipeline {
@@ -52,8 +53,9 @@ static std::string readTextFile(NSString* path) {
     // static-image source (L1/L2)
     BackendTexture*  _staticSrc;
     uint32_t         _srcW, _srcH;        // current source dimensions
-    uint32_t         _dstW, _dstH;        // current drawable dimensions
-    bool             _capturing;
+    uint32_t         _dstW, _dstH;        // current drawable dimensions (render-thread-only once capturing)
+    std::atomic<bool> _capturing;         // read across threads; gates the render-thread routing
+    dispatch_queue_t  _renderQueue;       // == SCKCapture's serial queue while capturing; the sole render thread
 }
 
 - (nullable instancetype)initWithLayer:(CAMetalLayer*)layer
@@ -88,8 +90,11 @@ static std::string readTextFile(NSString* path) {
     _vtx     = _backend.CreateVertexBuffer(kVertexBuffer, sizeof(kVertexBuffer));
     _ubo     = _backend.CreateConstantBuffer(sizeof(UBO));
     _push    = _backend.CreateConstantBuffer(sizeof(Push));
-    _sampler = _backend.CreateSampler(SamplerDesc{Filter::Linear, Wrap::Border});
-    _capturing = false;
+    // Nearest (point) matches the Windows engine default (ShaderPass.cpp:64 /
+    // IRenderBackend.h); the engine upgrades to Linear only when a preset's
+    // filter_linear says so. Linear here made passthrough blurrier than Windows (D1).
+    _sampler = _backend.CreateSampler(SamplerDesc{Filter::Nearest, Wrap::Border});
+    _capturing.store(false);
     return self;
 }
 
@@ -157,8 +162,18 @@ static std::string readTextFile(NSString* path) {
     _backend.EndRenderPass();
 }
 
-- (void)renderFrame {
-    if (_capturing) return;          // capture path drives its own frames
+// THREADING MODEL (REVIEW C1): the MetalBackend is touched from exactly one thread.
+// While capturing, that thread is SCKCapture's serial render queue (_renderQueue);
+// the FrameSink runs there and all other backend-touching work (resize, shader
+// repaint) is marshaled onto it. While NOT capturing, the main thread owns the
+// backend (the 30fps tick drives static redraws). runOnRenderThread routes accordingly.
+- (void)runOnRenderThread:(dispatch_block_t)block {
+    if (_capturing.load() && _renderQueue) dispatch_async(_renderQueue, block);
+    else block();   // not capturing: caller is the main thread, which owns the backend
+}
+
+// Does the actual single-pass render+present. MUST run on the current render thread.
+- (void)renderFrameLocked {
     if (!_staticSrc) return;
     @autoreleasepool {
         BackendTexture* drawable = _backend.BeginFrame();
@@ -169,37 +184,47 @@ static std::string readTextFile(NSString* path) {
     }
 }
 
+// Public: the static-image repaint (timer / explicit). No-op while capturing (the
+// capture queue drives frames). The atomic gate makes the cross-thread read safe.
+- (void)renderFrame {
+    if (_capturing.load()) return;   // capture path drives its own frames
+    [self renderFrameLocked];
+}
+
 - (void)resizeToWidth:(uint32_t)width height:(uint32_t)height {
-    _dstW = width; _dstH = height;
-    _backend.ResizeSwapChain(width, height);
-    [self renderFrame];              // re-render static source at the new size
+    [self runOnRenderThread:^{
+        _dstW = width; _dstH = height;          // render-thread-only once capturing
+        _backend.ResizeSwapChain(width, height);
+        if (!_capturing.load()) [self renderFrameLocked]; // capture path repaints next frame
+    }];
 }
 
 - (void)setShaderKind:(SGShaderKind)kind {
-    _activeShader.store(kind == SGShaderCRT ? _shaderCRT : _shaderPassthrough);
-    [self renderFrame];              // immediate repaint for the static path
+    _activeShader.store(kind == SGShaderCRT ? _shaderCRT : _shaderPassthrough); // atomic; safe from any thread
+    [self runOnRenderThread:^{ if (!_capturing.load()) [self renderFrameLocked]; }];
 }
 
 - (void)startCaptureKind:(SGTargetKind)kind targetID:(uint32_t)targetID {
     if (!_capture) {
         __weak LivePipeline* weakSelf = self;
-        // FrameSink: render the captured texture into the drawable, on the capture
-        // serial queue (the designated render thread). @autoreleasepool is mandatory.
+        // FrameSink runs on the capture serial queue (the render thread).
         FrameSink sink = [weakSelf](const CaptureFrame& f) {
             LivePipeline* s = weakSelf;
             if (!s) return;
             [s onCaptureFrameTex:f.texture w:f.width h:f.height frame:(uint32_t)f.inputFrameNo];
         };
-        _capture = new SCKCapture(&_backend, sink);
+        // Share the backend's MTLDevice (J7) so the captured texture is sampleable.
+        _capture = new SCKCapture(&_backend, sink, _backend.NativeDevice());
+        _renderQueue = (__bridge dispatch_queue_t)_capture->RenderQueue();
     }
-    _capturing = true;
+    _capturing.store(true);          // set BEFORE Start so routing engages immediately
     CaptureTarget t;
     t.kind = (kind == SGTargetWindow) ? CaptureTargetKind::Window : CaptureTargetKind::Display;
     t.id   = targetID;
     _capture->Start(t, /*maxRate*/false, /*cursor*/false);
 }
 
-// Called from the capture serial queue.
+// Called from the capture serial queue (the render thread).
 - (void)onCaptureFrameTex:(BackendTexture*)tex w:(uint32_t)w h:(uint32_t)h frame:(uint32_t)frameCount {
     @autoreleasepool {
         BackendTexture* drawable = _backend.BeginFrame();
@@ -209,9 +234,11 @@ static std::string readTextFile(NSString* path) {
     }
 }
 
+// MUST be called from the main thread (SCKCapture::Stop does a dispatch_sync onto the
+// render queue; calling from that queue would deadlock).
 - (void)stopCapture {
-    _capturing = false;
-    if (_capture) _capture->Stop();
+    _capturing.store(false);          // stop routing new work onto the render queue
+    if (_capture) _capture->Stop();   // drains the render queue synchronously before returning
 }
 
 - (BOOL)renderOffscreenToPNG:(NSString*)outPath {
