@@ -9,6 +9,8 @@ mapping behind the interface.
 
 #import <Metal/Metal.h>
 #import <Foundation/Foundation.h>
+#import <QuartzCore/QuartzCore.h>   // CAMetalLayer / CAMetalDrawable (windowed present path)
+#import <CoreGraphics/CoreGraphics.h>
 #include "MetalBackend.h"
 #include <cstdio>
 
@@ -76,12 +78,30 @@ struct MetalBackend::Impl {
     MTLPixelFormat              curTargetFmt = MTLPixelFormatBGRA8Unorm; // format of the BeginRenderPass target
     BlendMode                   curBlend = BlendMode::Disabled;          // active blend (PSO selector)
     void*                       boundShader = nullptr;                   // MShader* resolved to a PSO at Draw
+    // --- windowed present path (CAMetalLayer) ---
+    CAMetalLayer*               layer = nil;            // owned by the AppKit view, not us
+    id<CAMetalDrawable>         curDrawable = nil;      // acquired in BeginFrame, presented in Present
+    MTexture*                   curFrameTarget = nullptr; // heap wrapper for curDrawable.texture (freed in Present)
+    bool                        curTargetIsDrawable = false; // set in BeginRenderPass; gates the no-wait present
+    CGColorSpaceRef             colorSpace = nullptr;
 };
 
 MetalBackend::MetalBackend() : p(new Impl) {}
 MetalBackend::~MetalBackend() {
-    if (p) { p->enc = nil; p->cb = nil; p->queue = nil; p->device = nil; delete p; p = nullptr; }
+    if (p) {
+        p->enc = nil; p->cb = nil;
+        p->curDrawable = nil;
+        if (p->curFrameTarget) { delete p->curFrameTarget; p->curFrameTarget = nullptr; }
+        p->layer = nil; // owned by the view; do not destroy
+        if (p->colorSpace) { CGColorSpaceRelease(p->colorSpace); p->colorSpace = nullptr; }
+        p->queue = nil; p->device = nil;
+        delete p; p = nullptr;
+    }
 }
+
+// Concrete accessor (NOT on the neutral IRenderBackend) so SCKCapture can share the
+// one device instead of creating a second via MTLCreateSystemDefaultDevice.
+void* MetalBackend::NativeDevice() { return (__bridge void*)p->device; }
 
 bool MetalBackend::InitializeHeadless() {
     p->device = MTLCreateSystemDefaultDevice();
@@ -100,11 +120,56 @@ bool MetalBackend::InitializeHeadless() {
     return true;
 }
 
-// Windowed path lands with M1 UI work (CAMetalLayer drawable).
-bool MetalBackend::Initialize(void*, uint32_t, uint32_t, bool) { return InitializeHeadless(); }
-void MetalBackend::ResizeSwapChain(uint32_t, uint32_t) {}
-BackendTexture* MetalBackend::BeginFrame() { return nullptr; } // no swap chain yet
-void MetalBackend::Present() {}
+// Windowed present path. nativeLayer is a CAMetalLayer* created + owned by the
+// AppKit view; we configure it (device/format/colorspace) but never destroy it.
+bool MetalBackend::Initialize(void* nativeLayer, uint32_t w, uint32_t h, bool hdr) {
+    if (!InitializeHeadless()) return false; // device + queue + shared vdesc
+    if (!nativeLayer) return true;           // headless caller (tests/demo) passes null
+    p->layer = (__bridge CAMetalLayer*)nativeLayer;
+    p->layer.device = p->device;
+    // SDR path: BGRA8 (NON-sRGB, matches the verified raw-UNORM chain) tagged sRGB so
+    // the compositor does not misread the bytes as the display's wide-gamut space.
+    // (HDR/EDR is deferred; hdr flag reserved.)
+    (void)hdr;
+    p->layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
+    if (!p->colorSpace) p->colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+    p->layer.colorspace = p->colorSpace;
+    p->layer.framebufferOnly = YES;          // drawable is only ever a color attachment; never read back
+    p->layer.maximumDrawableCount = 3;       // bound capture/present coupling; do not raise to mask stalls
+    if (w && h) ResizeSwapChain(w, h);
+    return true;
+}
+
+void MetalBackend::ResizeSwapChain(uint32_t w, uint32_t h) {
+    if (!p->layer || !w || !h) return;
+    p->layer.drawableSize = CGSizeMake((CGFloat)w, (CGFloat)h); // device pixels
+    if (p->colorSpace) p->layer.colorspace = p->colorSpace;     // re-assert after size change
+}
+
+BackendTexture* MetalBackend::BeginFrame() {
+    if (!p->layer) return nullptr;                              // headless: no swap chain
+    p->curDrawable = [p->layer nextDrawable];
+    if (!p->curDrawable) return nullptr;                        // pool starved / 1s timeout -> caller skips frame
+    // Heap-allocate the wrapper so DestroyTexture's `delete` is always safe (the
+    // borrowed-target no-op contract). Freed in Present(). NOT an interior Impl pointer.
+    p->curFrameTarget = new MTexture{ p->curDrawable.texture, false };
+    return reinterpret_cast<BackendTexture*>(p->curFrameTarget);
+}
+
+void MetalBackend::Present() {
+    if (!p->cb || !p->curDrawable) {                            // nothing to present (skipped frame / partial)
+        if (p->curFrameTarget) { delete p->curFrameTarget; p->curFrameTarget = nullptr; }
+        p->curDrawable = nil; p->curTargetIsDrawable = false;
+        return;
+    }
+    if (p->enc) { [p->enc endEncoding]; p->enc = nil; }         // abort-safety if the pass was left open
+    [p->cb presentDrawable:p->curDrawable];
+    [p->cb commit];                                            // NO waitUntilCompleted on the present path
+    p->cb = nil;
+    if (p->curFrameTarget) { delete p->curFrameTarget; p->curFrameTarget = nullptr; }
+    p->curDrawable = nil;
+    p->curTargetIsDrawable = false;
+}
 
 BackendTexture* MetalBackend::CreateTexture(const TextureDesc& d, const void* initialData, size_t rowPitch) {
     MTLTextureDescriptor* td =
@@ -247,6 +312,8 @@ void MetalBackend::UpdateConstantBuffer(BackendBuffer* h, const void* data, size
 
 void MetalBackend::BeginRenderPass(BackendTexture* target, bool clear, const float clearColor[4]) {
     auto* t = reinterpret_cast<MTexture*>(target);
+    // Drawable target => present path (no blocking commit in EndRenderPass).
+    p->curTargetIsDrawable = (p->curFrameTarget != nullptr && t == p->curFrameTarget);
     p->curTargetFmt = t->tex.pixelFormat; // PSO color-attachment format follows the bound target
     MTLRenderPassDescriptor* rp = [MTLRenderPassDescriptor renderPassDescriptor];
     rp.colorAttachments[0].texture = t->tex;
@@ -262,11 +329,17 @@ void MetalBackend::BeginRenderPass(BackendTexture* target, bool clear, const flo
 
 void MetalBackend::EndRenderPass() {
     [p->enc endEncoding];
-    [p->cb commit];
-    [p->cb waitUntilCompleted]; // correctness-first: output immediately readable
-    p->enc = nil; p->cb = nil;
+    p->enc = nil;
     p->boundShader = nullptr;
     p->curBlend = BlendMode::Disabled; // reset per-pass blend (engine restores Disabled after cursor)
+    if (p->curTargetIsDrawable) {
+        // Present path: leave p->cb live; Present() does presentDrawable + commit (no wait).
+        return;
+    }
+    // Offscreen/headless path: commit + wait so output is immediately readable (tests/demo).
+    [p->cb commit];
+    [p->cb waitUntilCompleted];
+    p->cb = nil;
 }
 
 void MetalBackend::SetViewport(float x, float y, float w, float h) {

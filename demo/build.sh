@@ -7,7 +7,7 @@ SDK="/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Develo
 
 clang++ -std=c++20 -fobjc-arc -arch arm64 -mmacosx-version-min=12.3 \
   -isysroot "$SDK" \
-  -framework Metal -framework Foundation -framework ImageIO -framework CoreGraphics \
+  -framework Metal -framework QuartzCore -framework Foundation -framework ImageIO -framework CoreGraphics \
   ../backend/MetalBackend.mm ../backend/sg_image.mm demo.mm -o demo
 
 IN="../../images/screen6.png"

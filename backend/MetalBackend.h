@@ -30,6 +30,11 @@ public:
     // Headless bring-up (device + queue only). Returns false if no Metal device.
     bool InitializeHeadless();
 
+    // The backing id<MTLDevice> as an opaque void* (kept off the neutral interface).
+    // Lets SCKCapture's CVMetalTextureCache share this device instead of creating a
+    // second one. __bridge-cast back to id<MTLDevice> at the call site.
+    void* NativeDevice();
+
     // Test/utility: copy BGRA8 bytes to/from a texture's host-visible storage. Not
     // part of the engine-facing interface; used by the abstraction conformance test.
     // (The engine never uploads CPU pixels except via WIC/capture, which use

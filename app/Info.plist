@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>ShaderGlass</string>
+    <key>CFBundleDisplayName</key>
+    <string>ShaderGlass</string>
+    <key>CFBundleIdentifier</key>
+    <string>net.shaderglass.mac</string>
+    <key>CFBundleVersion</key>
+    <string>0.1</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleExecutable</key>
+    <string>ShaderGlass</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>12.3</string>
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>ShaderGlass captures a window or display so it can apply live shader effects to it.</string>
+</dict>
+</plist>

@@ -10,6 +10,9 @@ backend/backend_test
 capture/capture_test
 demo/demo
 
+# The built .app bundle + selftest output (regenerate via app/build.sh)
+app/build/
+
 # Generated render outputs (regenerate via demo/build.sh)
 demo/out/
 

@@ -7,7 +7,7 @@ cd "$(dirname "$0")"
 mkdir -p .logs
 SDK="/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
 
-FRAMEWORKS=(-framework Metal -framework Foundation -framework CoreVideo -framework CoreMedia)
+FRAMEWORKS=(-framework Metal -framework QuartzCore -framework Foundation -framework CoreVideo -framework CoreMedia)
 # Link ScreenCaptureKit only if present (it is on 12.3+); the .mm guards its use.
 if [ -d "$SDK/System/Library/Frameworks/ScreenCaptureKit.framework" ]; then
   FRAMEWORKS+=(-framework ScreenCaptureKit -framework CoreGraphics)
