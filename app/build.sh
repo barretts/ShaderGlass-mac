@@ -45,21 +45,36 @@ cp ../../images/screen6.png "$RES/"
 #
 # The cert's private key is imported scoped to codesign (`-T`, NOT `-A` -- REVIEW S2),
 # so on a machine that has not granted codesign keychain access, `codesign --sign
-# ShaderGlassDev` BLOCKS on a GUI prompt (it wedges headless builds). We therefore make
-# the persistent-cert path OPT-IN via SG_SIGN_CERT=1, and default to ad-hoc (which the
-# live app runs fine under -- the cert only buys a TCC grant that survives rebuilds).
+# ShaderGlassDev` BLOCKS on a GUI prompt (it would wedge headless builds).
 #
-# To use the cert non-interactively, grant codesign access to the key ONCE:
+# Default is now the persistent cert (stable cdhash -> Screen Recording grant survives
+# rebuilds). To stay non-interactive we bound the cert-sign with a timeout when one is
+# available: if codesign blocks on a keychain prompt, we kill it and fall back to ad-hoc
+# instead of wedging the build. Set SG_SIGN_CERT=0 to force ad-hoc.
+#
+# To grant codesign access to the key ONCE (so it never prompts again):
 #   security set-key-partition-list -S apple-tool:,apple:,codesign: -s \
 #       -k <login-password> ~/Library/Keychains/login.keychain-db
-# then build with: SG_SIGN_CERT=1 ./build.sh
 rm -f "$BIN.cstemp"   # clear any leftover from a previously-killed cert-sign attempt
-if [ "${SG_SIGN_CERT:-0}" = "1" ] && security find-identity -p codesigning 2>/dev/null | grep -q "ShaderGlassDev"; then
+# Pick a timeout wrapper if present (homebrew coreutils provides gtimeout); else none.
+TIMEOUT_BIN=""
+for t in timeout gtimeout; do command -v "$t" >/dev/null 2>&1 && { TIMEOUT_BIN="$t"; break; }; done
+sign_adhoc() { echo "ad-hoc sign (grant won't survive rebuilds)"; codesign --force --sign - "$APP"; }
+if [ "${SG_SIGN_CERT:-1}" != "0" ] && security find-identity -p codesigning 2>/dev/null | grep -q "ShaderGlassDev"; then
   echo "signing with ShaderGlassDev (stable cdhash -> Screen Recording grant survives rebuilds)"
-  codesign --force --sign "ShaderGlassDev" "$APP"
+  if [ -n "$TIMEOUT_BIN" ]; then
+    if ! "$TIMEOUT_BIN" 20 codesign --force --sign "ShaderGlassDev" "$APP"; then
+      echo "WARN: cert sign failed/blocked (keychain prompt?) -- falling back to ad-hoc." >&2
+      echo "  Grant codesign key access once to fix; see header of build.sh." >&2
+      sign_adhoc
+    fi
+  else
+    # No timeout wrapper: cert sign may block on a GUI prompt the first time.
+    codesign --force --sign "ShaderGlassDev" "$APP" || sign_adhoc
+  fi
 else
-  echo "ad-hoc sign (default). For a Screen Recording grant that survives rebuilds: run"
-  echo "  ./make-signing-cert.sh, grant codesign keychain access, then SG_SIGN_CERT=1 ./build.sh"
+  [ "${SG_SIGN_CERT:-1}" = "0" ] && echo "ad-hoc sign (SG_SIGN_CERT=0 set)." \
+    || echo "ad-hoc sign: no ShaderGlassDev cert. Run ./make-signing-cert.sh for a persistent grant."
   codesign --force --sign - "$APP"
 fi
 # Verify the signature and FAIL the build if it is bad. The old `| tail -2 || echo`
@@ -73,6 +88,20 @@ if ! codesign --verify --verbose=2 "$APP" 2>.logs/codesign-verify.log; then
 fi
 
 echo "built $APP"
+
+# ---- install to ~/Applications so Spotlight/cmd-space launches this build ----
+# Spotlight only indexes apps in standard locations and does not reliably treat a
+# symlink as a launchable app, so we copy. ~/Applications needs no sudo. The copy is
+# refreshed every build, so cmd-space always opens the current cert-signed binary.
+# Set SG_INSTALL=0 to skip.
+if [ "${SG_INSTALL:-1}" != "0" ]; then
+  DEST="$HOME/Applications/ShaderGlass.app"
+  mkdir -p "$HOME/Applications"
+  rm -rf "$DEST"
+  cp -R "$APP" "$DEST"
+  echo "installed -> $DEST (cmd-space: \"ShaderGlass\")"
+fi
+
 if [ "$1" = "selftest" ]; then
   echo "=== selftest (offscreen golden) ==="
   "$BIN" --selftest "$PWD/build/selftest.png"

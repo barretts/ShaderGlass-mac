@@ -10,6 +10,13 @@ cd mac/app
 ./make-signing-cert.sh        # creates a self-signed "ShaderGlassDev" cert in your login keychain
 ```
 
+`build.sh` now signs with `ShaderGlassDev` **by default** (stable cdhash). It bounds the
+cert-sign with a `timeout` and falls back to ad-hoc if codesign would block on a keychain
+prompt, so headless builds never wedge. Force ad-hoc with `SG_SIGN_CERT=0`.
+
+Each build also installs a copy to `~/Applications/ShaderGlass.app`, so **cmd-space (Spotlight)
+launches the current cert-signed build** — just type "ShaderGlass". Skip with `SG_INSTALL=0`.
+
 Why: macOS TCC keys the Screen Recording permission to the binary's **code-signature cdhash**.
 Ad-hoc signing (`codesign -s -`) produces a new cdhash on every rebuild, so a previously-granted
 permission silently stops applying ("System Settings says granted, but the app says it isn't"). A
