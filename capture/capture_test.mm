@@ -178,6 +178,26 @@ int main(int argc, char** argv) {
         conv.Flush();
     }
 
+    // --- restart stress: Start/Stop calls Initialize repeatedly on one converter ---
+    // This used to overwrite the CVMetalTextureCacheRef without releasing the old
+    // cache. The probe cannot count CF retains directly, but it exercises the exact
+    // lifecycle: initialize -> convert -> flush -> initialize again.
+    {
+        int restartFails = 0;
+        for (int n=0; n<4; ++n) {
+            if (!conv.Initialize(dev)) { restartFails++; continue; }
+            std::vector<uint8_t> b(8*8*4, (uint8_t)(40 + n));
+            for (int i=0; i<8*8; ++i) b[i*4+3] = 255;
+            CVPixelBufferRef rpb = makePixelBuffer(8, 8, b);
+            id<MTLTexture> tex = conv.TextureFromPixelBuffer(rpb);
+            if (!tex || tex.width != 8 || tex.height != 8) restartFails++;
+            CVPixelBufferRelease(rpb);
+            conv.Flush();
+        }
+        fprintf(stderr,"restart stress: %d failure(s) over 4 CVToMetal reinitializes\n", restartFails);
+        ok = ok && (restartFails == 0);
+    }
+
     if (!ok) { fprintf(stderr,"FAIL: a capture-path case failed\n"); return 1; }
     fprintf(stderr,"PASS: capture-path seam + CVToMetal ring deliver frames pixel-perfect.\n");
     return 0;

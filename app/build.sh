@@ -35,7 +35,10 @@ clang++ -std=c++20 -fobjc-arc -arch arm64 -mmacosx-version-min=12.3 \
 
 # ---- assemble bundle ----
 cp Info.plist "$APP/Contents/Info.plist"
-cp ../spike/passthrough.metal ../spike/crt_demo.metal "$RES/"
+cp ../spike/passthrough.metal ../spike/crt_demo.metal ../spike/crt_pro.metal "$RES/"
+cp ../spike/lcd_grid.metal ../spike/amber_mono.metal ../spike/vhs_soft.metal "$RES/"
+cp ../spike/green_mono.metal ../spike/pixel_grid.metal ../spike/bloom_soft.metal "$RES/"
+cp ../spike/pvm_slots.metal "$RES/"
 cp ../../images/screen6.png "$RES/"
 
 # ---- sign: persistent cert if present (grant survives rebuilds), else ad-hoc ----

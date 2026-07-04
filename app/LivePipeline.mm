@@ -42,8 +42,7 @@ static std::string readTextFile(NSString* path) {
 @implementation LivePipeline {
     MetalBackend     _backend;
     SCKCapture*      _capture;            // C++ owned; created on first startCapture
-    BackendShader*   _shaderPassthrough;
-    BackendShader*   _shaderCRT;
+    BackendShader*   _shaders[SGShaderCount];
     std::atomic<BackendShader*> _activeShader;  // hot-swapped by setShaderKind
     BackendBuffer*   _vtx;
     BackendBuffer*   _ubo;
@@ -71,20 +70,31 @@ static std::string readTextFile(NSString* path) {
     }
     _dstW = width; _dstH = height;
 
-    // compile both shaders once
-    std::string pt = readTextFile([shaderDir stringByAppendingPathComponent:@"passthrough.metal"]);
-    std::string crt = readTextFile([shaderDir stringByAppendingPathComponent:@"crt_demo.metal"]);
-    if (pt.empty() || crt.empty()) {
-        NSLog(@"LivePipeline: cannot read shaders from %@", shaderDir);
-        return nil;
+    NSArray<NSString*>* shaderFiles = @[
+        @"passthrough.metal",
+        @"crt_demo.metal",
+        @"crt_pro.metal",
+        @"lcd_grid.metal",
+        @"amber_mono.metal",
+        @"vhs_soft.metal",
+        @"green_mono.metal",
+        @"pixel_grid.metal",
+        @"bloom_soft.metal",
+        @"pvm_slots.metal",
+    ];
+    for (NSInteger i = 0; i < SGShaderCount; ++i) {
+        std::string src = readTextFile([shaderDir stringByAppendingPathComponent:shaderFiles[i]]);
+        if (src.empty()) {
+            NSLog(@"LivePipeline: cannot read shader %@ from %@", shaderFiles[i], shaderDir);
+            return nil;
+        }
+        _shaders[i] = _backend.CreateShader(src.data(), src.size(), src.data(), src.size());
+        if (!_shaders[i]) {
+            NSLog(@"LivePipeline: shader compile failed for %@", shaderFiles[i]);
+            return nil;
+        }
     }
-    _shaderPassthrough = _backend.CreateShader(pt.data(), pt.size(), pt.data(), pt.size());
-    _shaderCRT         = _backend.CreateShader(crt.data(), crt.size(), crt.data(), crt.size());
-    if (!_shaderPassthrough || !_shaderCRT) {
-        NSLog(@"LivePipeline: shader compile failed");
-        return nil;
-    }
-    _activeShader.store(_shaderPassthrough);
+    _activeShader.store(_shaders[SGShaderPassthrough]);
 
     // once-created GPU resources
     _vtx     = _backend.CreateVertexBuffer(kVertexBuffer, sizeof(kVertexBuffer));
@@ -200,11 +210,18 @@ static std::string readTextFile(NSString* path) {
 }
 
 - (void)setShaderKind:(SGShaderKind)kind {
-    _activeShader.store(kind == SGShaderCRT ? _shaderCRT : _shaderPassthrough); // atomic; safe from any thread
+    if (kind < 0 || kind >= SGShaderCount) kind = SGShaderPassthrough;
+    _activeShader.store(_shaders[kind]); // atomic; safe from any thread
     [self runOnRenderThread:^{ if (!_capturing.load()) [self renderFrameLocked]; }];
 }
 
-- (void)startCaptureKind:(SGTargetKind)kind targetID:(uint32_t)targetID {
+- (BOOL)startCaptureKind:(SGTargetKind)kind targetID:(uint32_t)targetID {
+    return [self startCaptureKind:kind targetID:targetID excludingWindowIDs:nil];
+}
+
+- (BOOL)startCaptureKind:(SGTargetKind)kind
+                targetID:(uint32_t)targetID
+      excludingWindowIDs:(nullable NSArray<NSNumber*>*)excludedWindowIDs {
     if (!_capture) {
         __weak LivePipeline* weakSelf = self;
         // FrameSink runs on the capture serial queue (the render thread).
@@ -213,15 +230,23 @@ static std::string readTextFile(NSString* path) {
             if (!s) return;
             [s onCaptureFrameTex:f.texture w:f.width h:f.height frame:(uint32_t)f.inputFrameNo];
         };
+        CaptureEventSink events = [weakSelf](const CaptureEvent& e) {
+            LivePipeline* s = weakSelf;
+            if (!s || !s.captureEventHandler) return;
+            NSString* msg = [NSString stringWithUTF8String:e.message.c_str()];
+            s.captureEventHandler(e.kind == CaptureEventKind::Started, msg);
+        };
         // Share the backend's MTLDevice (J7) so the captured texture is sampleable.
-        _capture = new SCKCapture(&_backend, sink, _backend.NativeDevice());
+        _capture = new SCKCapture(&_backend, sink, _backend.NativeDevice(), events);
         _renderQueue = (__bridge dispatch_queue_t)_capture->RenderQueue();
     }
     _capturing.store(true);          // set BEFORE Start so routing engages immediately
     CaptureTarget t;
     t.kind = (kind == SGTargetWindow) ? CaptureTargetKind::Window : CaptureTargetKind::Display;
     t.id   = targetID;
-    _capture->Start(t, /*maxRate*/false, /*cursor*/false);
+    for (NSNumber* n in excludedWindowIDs)
+        t.excludedWindowIDs.push_back((uint32_t)n.unsignedIntValue);
+    return _capture->Start(t, /*maxRate*/false, /*cursor*/false);
 }
 
 // Called from the capture serial queue (the render thread).
@@ -261,8 +286,9 @@ static std::string readTextFile(NSString* path) {
     if (_ubo) { _backend.DestroyBuffer(_ubo); _ubo = nullptr; }
     if (_push) { _backend.DestroyBuffer(_push); _push = nullptr; }
     if (_sampler) { _backend.DestroySampler(_sampler); _sampler = nullptr; }
-    if (_shaderPassthrough) { _backend.DestroyShader(_shaderPassthrough); _shaderPassthrough = nullptr; }
-    if (_shaderCRT) { _backend.DestroyShader(_shaderCRT); _shaderCRT = nullptr; }
+    for (NSInteger i = 0; i < SGShaderCount; ++i) {
+        if (_shaders[i]) { _backend.DestroyShader(_shaders[i]); _shaders[i] = nullptr; }
+    }
 }
 
 - (void)dealloc { [self shutdown]; }

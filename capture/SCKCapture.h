@@ -32,6 +32,9 @@ headlessly without any capture permission.
 #include "../backend/IRenderBackend.h"
 #include <cstdint>
 #include <functional>
+#include <memory>
+#include <string>
+#include <vector>
 
 #ifdef __OBJC__
 #import <CoreVideo/CoreVideo.h>
@@ -84,6 +87,16 @@ struct CaptureFrame
 
 using FrameSink = std::function<void(const CaptureFrame&)>;
 
+enum class CaptureEventKind { Started, Failed };
+
+struct CaptureEvent
+{
+    CaptureEventKind kind = CaptureEventKind::Failed;
+    std::string      message;
+};
+
+using CaptureEventSink = std::function<void(const CaptureEvent&)>;
+
 // What to capture. Mirrors the engine's desktop-clone vs window-clone choice.
 enum class CaptureTargetKind { Display, Window };
 
@@ -91,6 +104,7 @@ struct CaptureTarget
 {
     CaptureTargetKind kind = CaptureTargetKind::Display;
     uint32_t          id   = 0; // CGDirectDisplayID for Display, CGWindowID for Window
+    std::vector<uint32_t> excludedWindowIDs; // CGWindowIDs excluded from display capture
 };
 
 // Live ScreenCaptureKit capture session. The permission-gated counterpart to
@@ -105,7 +119,8 @@ public:
     // that the backend renders with. CVToMetal MUST use the same device or the captured
     // texture cannot be sampled by the backend's pipeline (undefined on multi-GPU). If
     // null, CVToMetal falls back to the system default device (legacy behavior).
-    SCKCapture(IRenderBackend* backend, FrameSink sink, void* sharedDevice = nullptr);
+    SCKCapture(IRenderBackend* backend, FrameSink sink, void* sharedDevice = nullptr,
+               CaptureEventSink eventSink = nullptr);
     ~SCKCapture();
 
     // Enumerate capturable displays/windows (async TCC; invokes cb on the main queue).
@@ -133,7 +148,7 @@ public:
 
 private:
     struct Impl;
-    Impl* p;
+    std::shared_ptr<Impl> p;
 };
 
 } // namespace sg

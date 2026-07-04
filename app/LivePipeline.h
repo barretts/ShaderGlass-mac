@@ -23,6 +23,15 @@ NS_ASSUME_NONNULL_BEGIN
 typedef NS_ENUM(NSInteger, SGShaderKind) {
     SGShaderPassthrough = 0,
     SGShaderCRT         = 1,
+    SGShaderCRTPro      = 2,
+    SGShaderLCDGrid     = 3,
+    SGShaderAmberMono   = 4,
+    SGShaderVHSSoft     = 5,
+    SGShaderGreenMono   = 6,
+    SGShaderPixelGrid   = 7,
+    SGShaderBloomSoft   = 8,
+    SGShaderPVMSlots    = 9,
+    SGShaderCount       = 10,
 };
 
 // Capture target kinds mirrored for the UI layer (avoids exposing sg:: types here).
@@ -32,6 +41,8 @@ typedef NS_ENUM(NSInteger, SGTargetKind) {
 };
 
 @interface LivePipeline : NSObject
+
+@property(nonatomic, copy, nullable) void (^captureEventHandler)(BOOL started, NSString* _Nullable message);
 
 // Bring up the backend on the view's CAMetalLayer at the given device-pixel size.
 // shaderDir is the directory holding passthrough.metal / crt_demo.metal (the bundle
@@ -58,7 +69,10 @@ typedef NS_ENUM(NSInteger, SGTargetKind) {
 // L3+: start/stop live capture of a target. Runs the capture on its own serial
 // queue; the FrameSink renders+presents per frame. id is CGDirectDisplayID or
 // CGWindowID. Returns immediately; permission/enumeration is async.
-- (void)startCaptureKind:(SGTargetKind)kind targetID:(uint32_t)targetID;
+- (BOOL)startCaptureKind:(SGTargetKind)kind targetID:(uint32_t)targetID;
+- (BOOL)startCaptureKind:(SGTargetKind)kind
+                targetID:(uint32_t)targetID
+      excludingWindowIDs:(nullable NSArray<NSNumber*>*)excludedWindowIDs;
 - (void)stopCapture;
 
 // Render one frame into an OFFSCREEN cpuReadable texture and write it to a PNG.

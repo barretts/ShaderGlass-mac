@@ -24,6 +24,8 @@ Drives LivePipeline. Capture target enumeration uses ScreenCaptureKit directly
 
 @implementation SGAppDelegate {
     NSWindow*       _window;
+    NSView*         _content;
+    NSView*         _bar;
     SGMetalView*    _view;
     LivePipeline*   _pipe;
     NSPopUpButton*  _targetPicker;
@@ -31,6 +33,11 @@ Drives LivePipeline. Capture target enumeration uses ScreenCaptureKit directly
     NSButton*       _startStop;
     NSTimer*        _redrawTimer;     // L1/L2 static-image redraw (no capture)
     BOOL            _capturing;
+    BOOL            _captureStarting;
+    BOOL            _overlayMode;
+    CGFloat         _barH;
+    NSRect          _normalWindowFrame;
+    NSPanel*        _overlayWindow;
     NSString*       _shaderDir;
 }
 
@@ -50,8 +57,8 @@ Drives LivePipeline. Capture target enumeration uses ScreenCaptureKit directly
 }
 
 - (void)applicationDidFinishLaunching:(NSNotification*)note {
-    const CGFloat barH = 44;
-    NSRect frame = NSMakeRect(0, 0, 960, 640 + barH);
+    _barH = 44;
+    NSRect frame = NSMakeRect(0, 0, 960, 640 + _barH);
     _window = [[NSWindow alloc] initWithContentRect:frame
                                           styleMask:(NSWindowStyleMaskTitled|NSWindowStyleMaskClosable|
                                                      NSWindowStyleMaskMiniaturizable|NSWindowStyleMaskResizable)
@@ -60,20 +67,20 @@ Drives LivePipeline. Capture target enumeration uses ScreenCaptureKit directly
     [_window center];
 
     // Container content view: a control bar pinned to the top, the Metal view below.
-    NSView* content = [[NSView alloc] initWithFrame:frame];
-    _window.contentView = content;
+    _content = [[NSView alloc] initWithFrame:frame];
+    _window.contentView = _content;
 
-    NSView* bar = [[NSView alloc] initWithFrame:NSMakeRect(0, frame.size.height - barH, frame.size.width, barH)];
-    bar.autoresizingMask = NSViewWidthSizable | NSViewMinYMargin;
-    bar.wantsLayer = YES;
-    bar.layer.backgroundColor = [NSColor windowBackgroundColor].CGColor;
-    [content addSubview:bar];
-    [self buildControlsInBar:bar];
+    _bar = [[NSView alloc] initWithFrame:NSMakeRect(0, frame.size.height - _barH, frame.size.width, _barH)];
+    _bar.autoresizingMask = NSViewWidthSizable | NSViewMinYMargin;
+    _bar.wantsLayer = YES;
+    _bar.layer.backgroundColor = [NSColor windowBackgroundColor].CGColor;
+    [_content addSubview:_bar];
+    [self buildControlsInBar:_bar];
 
-    _view = [[SGMetalView alloc] initWithFrame:NSMakeRect(0, 0, frame.size.width, frame.size.height - barH)];
+    _view = [[SGMetalView alloc] initWithFrame:NSMakeRect(0, 0, frame.size.width, frame.size.height - _barH)];
     _view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     _view.sgDelegate = self;
-    [content addSubview:_view];
+    [_content addSubview:_view];
 
     _shaderDir = [self resolveShaderDir];
     CGSize px = [_view backingPixelSize];
@@ -84,6 +91,10 @@ Drives LivePipeline. Capture target enumeration uses ScreenCaptureKit directly
         [self fatal:@"Failed to initialize Metal pipeline (no GPU or shader compile error)."];
         return;
     }
+    __weak SGAppDelegate* weakSelf = self;
+    _pipe.captureEventHandler = ^(BOOL started, NSString* message) {
+        [weakSelf captureDidReportStarted:started message:message];
+    };
     // L1/L2: show the sample image immediately, repaint on a light timer so resizes
     // and shader swaps are always reflected even before capture is started.
     [_pipe setStaticImagePath:[self resolveSampleImage]];
@@ -119,28 +130,172 @@ Drives LivePipeline. Capture target enumeration uses ScreenCaptureKit directly
     NSTextField* sl = [NSTextField labelWithString:@"Shader:"];
     sl.frame = NSMakeRect(400, y, 52, h);
     [bar addSubview:sl];
-    _shaderPicker = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(456, y, 140, h) pullsDown:NO];
-    [_shaderPicker addItemsWithTitles:@[@"Passthrough", @"CRT"]];
+    _shaderPicker = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(456, y, 220, h) pullsDown:NO];
+    [_shaderPicker addItemsWithTitles:@[
+        @"Passthrough",
+        @"CRT",
+        @"CRT Pro",
+        @"LCD Grid",
+        @"Amber Mono",
+        @"VHS Soft",
+        @"Green Mono",
+        @"Pixel Grid",
+        @"Bloom Soft",
+        @"PVM Slots",
+    ]];
     _shaderPicker.target = self; _shaderPicker.action = @selector(shaderChanged:);
     [bar addSubview:_shaderPicker];
 
     _startStop = [NSButton buttonWithTitle:@"Start" target:self action:@selector(toggleCapture:)];
-    _startStop.frame = NSMakeRect(612, y - 2, 90, h + 4);
+    _startStop.frame = NSMakeRect(692, y - 2, 90, h + 4);
     _startStop.bezelStyle = NSBezelStyleRounded;
     [bar addSubview:_startStop];
 
     NSButton* rescan = [NSButton buttonWithTitle:@"Rescan" target:self action:@selector(rescanTargets:)];
-    rescan.frame = NSMakeRect(708, y - 2, 80, h + 4);
+    rescan.frame = NSMakeRect(788, y - 2, 80, h + 4);
     rescan.bezelStyle = NSBezelStyleRounded;
     [bar addSubview:rescan];
 }
 
 - (void)shaderChanged:(id)sender {
-    [_pipe setShaderKind:(_shaderPicker.indexOfSelectedItem == 1) ? SGShaderCRT : SGShaderPassthrough];
+    [_pipe setShaderKind:(SGShaderKind)_shaderPicker.indexOfSelectedItem];
     NSLog(@"ShaderGlass: shader -> %@", _shaderPicker.titleOfSelectedItem);
 }
 
 - (void)rescanTargets:(id)sender { [self refreshTargets]; }
+
+- (void)captureDidReportStarted:(BOOL)started message:(NSString*)message {
+    if (started) {
+        _captureStarting = NO;
+        _capturing = YES;
+        _startStop.enabled = YES;
+        _startStop.title = @"Stop";
+        NSLog(@"ShaderGlass: capture started");
+        return;
+    }
+
+    NSLog(@"ShaderGlass: capture failed: %@", message ?: @"unknown error");
+    [_pipe stopCapture];
+    _captureStarting = NO;
+    _capturing = NO;
+    [self leaveOverlayMode];
+    _startStop.enabled = YES;
+    _startStop.title = @"Start";
+    [_pipe renderFrame];
+
+    NSAlert* a = [[NSAlert alloc] init];
+    a.messageText = @"Capture failed";
+    a.informativeText = message.length ? message : @"ShaderGlass could not start ScreenCaptureKit capture.";
+    [a addButtonWithTitle:@"OK"];
+    [a beginSheetModalForWindow:_window completionHandler:nil];
+}
+
+- (NSScreen*)screenForDisplayID:(uint32_t)displayID {
+    for (NSScreen* screen in NSScreen.screens) {
+        NSNumber* n = screen.deviceDescription[@"NSScreenNumber"];
+        if (n && n.unsignedIntValue == displayID) return screen;
+    }
+    return nil;
+}
+
+- (void)resizePipelineToCurrentView {
+    CGSize px = [_view backingPixelSize];
+    [_pipe resizeToWidth:(uint32_t)px.width height:(uint32_t)px.height];
+}
+
+- (void)installMetalViewInCloneWindow {
+    [_view removeFromSuperview];
+    NSRect bounds = _content.bounds;
+    _bar.frame = NSMakeRect(0, MAX(0, bounds.size.height - _barH), bounds.size.width, _barH);
+    _view.frame = NSMakeRect(0, 0, bounds.size.width, MAX(1, bounds.size.height - _barH));
+    _view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    [_content addSubview:_view positioned:NSWindowBelow relativeTo:_bar];
+    [self resizePipelineToCurrentView];
+}
+
+- (void)installMetalViewInOverlayWindow:(NSWindow*)window {
+    [_view removeFromSuperview];
+    NSView* content = window.contentView;
+    _view.frame = content.bounds;
+    _view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    [content addSubview:_view];
+    [self resizePipelineToCurrentView];
+}
+
+- (NSArray<NSNumber*>*)captureExclusionWindowIDs {
+    NSMutableArray<NSNumber*>* ids = [NSMutableArray array];
+    if (_window.windowNumber > 0) [ids addObject:@((uint32_t)_window.windowNumber)];
+    if (_overlayWindow.windowNumber > 0) [ids addObject:@((uint32_t)_overlayWindow.windowNumber)];
+    return ids;
+}
+
+- (BOOL)enterOverlayModeForDisplayID:(uint32_t)displayID {
+    NSScreen* screen = [self screenForDisplayID:displayID];
+    if (!screen) {
+        NSLog(@"ShaderGlass: overlay display %u did not match any NSScreen", (unsigned)displayID);
+        for (NSScreen* s in NSScreen.screens) {
+            NSNumber* n = s.deviceDescription[@"NSScreenNumber"];
+            NSLog(@"ShaderGlass: NSScreen id=%@ frame=%@", n, NSStringFromRect(s.frame));
+        }
+        return NO;
+    }
+
+    _normalWindowFrame = _window.frame;
+    NSRect f = screen.frame;
+    NSInteger overlayLevel = CGWindowLevelForKey(kCGScreenSaverWindowLevelKey);
+    _overlayWindow = [[NSPanel alloc] initWithContentRect:f
+                                                styleMask:(NSWindowStyleMaskBorderless|NSWindowStyleMaskNonactivatingPanel)
+                                                  backing:NSBackingStoreBuffered
+                                                    defer:NO
+                                                   screen:screen];
+    _overlayWindow.releasedWhenClosed = NO;
+    _overlayWindow.opaque = NO;
+    _overlayWindow.backgroundColor = NSColor.clearColor;
+    _overlayWindow.hasShadow = NO;
+    _overlayWindow.ignoresMouseEvents = YES;
+    _overlayWindow.level = overlayLevel;
+    _overlayWindow.collectionBehavior = (NSWindowCollectionBehaviorCanJoinAllSpaces |
+                                         NSWindowCollectionBehaviorFullScreenAuxiliary |
+                                         NSWindowCollectionBehaviorStationary |
+                                         NSWindowCollectionBehaviorIgnoresCycle);
+    _overlayWindow.contentView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, f.size.width, f.size.height)];
+    _overlayWindow.contentView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+
+    [self installMetalViewInOverlayWindow:_overlayWindow];
+    [_overlayWindow orderFrontRegardless];
+
+    [_window setContentSize:NSMakeSize(800, _barH)];
+    [_window setFrameTopLeftPoint:NSMakePoint(f.origin.x + 20, NSMaxY(f) - 20)];
+    _window.title = @"ShaderGlass Controls";
+    _window.level = overlayLevel + 1;
+    _window.collectionBehavior = (NSWindowCollectionBehaviorCanJoinAllSpaces |
+                                  NSWindowCollectionBehaviorFullScreenAuxiliary);
+    _bar.frame = _content.bounds;
+    _bar.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    [_window makeKeyAndOrderFront:nil];
+
+    _overlayMode = YES;
+    NSLog(@"ShaderGlass: overlay display %u screen=%@ level=%ld controls=%ld excluded=%@",
+          (unsigned)displayID, NSStringFromRect(f), (long)_overlayWindow.level,
+          (long)_window.level, [self captureExclusionWindowIDs]);
+    return YES;
+}
+
+- (void)leaveOverlayMode {
+    if (!_overlayMode) return;
+    [_overlayWindow orderOut:nil];
+    [_overlayWindow close];
+    _overlayWindow = nil;
+
+    _window.title = @"ShaderGlass (macOS)";
+    _window.level = NSNormalWindowLevel;
+    _window.collectionBehavior = NSWindowCollectionBehaviorManaged;
+    [_window setFrame:_normalWindowFrame display:YES];
+    _bar.autoresizingMask = NSViewWidthSizable | NSViewMinYMargin;
+    [self installMetalViewInCloneWindow];
+    [_window makeKeyAndOrderFront:nil];
+    _overlayMode = NO;
+}
 
 // ---- capture target enumeration (TCC gate) ----
 - (void)refreshTargets {
@@ -155,7 +310,7 @@ Drives LivePipeline. Capture target enumeration uses ScreenCaptureKit directly
                 for (SCDisplay* d in c.displays) {
                     SGTargetItem* t = [SGTargetItem new];
                     t.kind = SGTargetDisplay; t.targetID = (uint32_t)d.displayID;
-                    t.label = [NSString stringWithFormat:@"Display %u (%dx%d)", (unsigned)d.displayID, (int)d.width, (int)d.height];
+                    t.label = [NSString stringWithFormat:@"Glass Overlay — Display %u (%dx%d)", (unsigned)d.displayID, (int)d.width, (int)d.height];
                     [self->_targetPicker addItemWithTitle:t.label];
                     self->_targetPicker.lastItem.representedObject = t;
                 }
@@ -164,7 +319,7 @@ Drives LivePipeline. Capture target enumeration uses ScreenCaptureKit directly
                     SGTargetItem* t = [SGTargetItem new];
                     t.kind = SGTargetWindow; t.targetID = (uint32_t)w.windowID;
                     NSString* app = w.owningApplication.applicationName ?: @"?";
-                    t.label = [NSString stringWithFormat:@"%@ — %@", app, w.title];
+                    t.label = [NSString stringWithFormat:@"Window Clone — %@ — %@", app, w.title];
                     [self->_targetPicker addItemWithTitle:t.label];
                     self->_targetPicker.lastItem.representedObject = t;
                 }
@@ -179,10 +334,14 @@ Drives LivePipeline. Capture target enumeration uses ScreenCaptureKit directly
 }
 
 - (void)toggleCapture:(id)sender {
+    if (_captureStarting) return;
     if (_capturing) {
         [_pipe stopCapture];
         _capturing = NO;
+        _captureStarting = NO;
+        [self leaveOverlayMode];
         _startStop.title = @"Start";
+        _startStop.enabled = YES;
         [_pipe renderFrame];   // fall back to showing the static image
         return;
     }
@@ -192,9 +351,23 @@ Drives LivePipeline. Capture target enumeration uses ScreenCaptureKit directly
         [self refreshTargets];
         return;
     }
-    _capturing = YES;
-    _startStop.title = @"Stop";
-    [_pipe startCaptureKind:t.kind targetID:t.targetID];
+    BOOL useOverlay = (t.kind == SGTargetDisplay);
+    if (useOverlay && ![self enterOverlayModeForDisplayID:t.targetID]) {
+        NSLog(@"ShaderGlass: display %u has no matching NSScreen; using windowed clone mode", (unsigned)t.targetID);
+        useOverlay = NO;
+    }
+    if (!useOverlay) {
+        NSLog(@"ShaderGlass: starting windowed clone capture for %@", t.label);
+    }
+    _captureStarting = YES;
+    _startStop.title = @"Starting…";
+    _startStop.enabled = NO;
+    BOOL accepted = [_pipe startCaptureKind:t.kind
+                                   targetID:t.targetID
+                         excludingWindowIDs:useOverlay ? [self captureExclusionWindowIDs] : nil];
+    if (!accepted) {
+        [self captureDidReportStarted:NO message:@"ScreenCaptureKit is unavailable or capture initialization failed."];
+    }
 }
 
 - (void)showTCCDeniedAlert {

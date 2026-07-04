@@ -9,6 +9,7 @@ CVToMetal (testable headless) + the SCStream wrapper (permission-gated).
 #import <mach/mach_time.h>
 #include "SCKCapture.h"
 #include <cstdio>
+#include <memory>
 
 namespace sg {
 
@@ -55,10 +56,13 @@ CVToMetal::~CVToMetal() {
 }
 
 bool CVToMetal::Initialize(id<MTLDevice> device) {
+    Flush();
+    if (p->cache) { CFRelease(p->cache); p->cache = nullptr; }
     p->device = device;
     CVReturn r = CVMetalTextureCacheCreate(kCFAllocatorDefault, nullptr, device, nullptr, &p->cache);
     if (r != kCVReturnSuccess) {
         fprintf(stderr, "CVToMetal: CVMetalTextureCacheCreate failed (%d)\n", r);
+        p->device = nil;
         return false;
     }
     return true;
@@ -128,6 +132,7 @@ API_AVAILABLE(macos(12.3))
     sg::CVToMetal*           _conv;
     sg::IRenderBackend*      _backend;
     sg::FrameSink            _sink;
+    sg::CaptureEventSink     _eventSink;
     uint64_t                 _frameNo;
     uint32_t                 _lastW, _lastH;
 }
@@ -164,6 +169,13 @@ API_AVAILABLE(macos(12.3))
 
 - (void)stream:(SCStream*)stream didStopWithError:(NSError*)error API_AVAILABLE(macos(12.3)) {
     fprintf(stderr, "SCKCapture: stream stopped: %s\n", error.localizedDescription.UTF8String);
+    if (error && _eventSink) {
+        sg::CaptureEventSink sink = _eventSink;
+        std::string msg = error.localizedDescription.UTF8String ?: "stream stopped";
+        dispatch_async(dispatch_get_main_queue(), ^{
+            sink(sg::CaptureEvent{sg::CaptureEventKind::Failed, msg});
+        });
+    }
 }
 @end
 #endif // ScreenCaptureKit available (delegate block)
@@ -186,26 +198,44 @@ namespace sg {
 struct SCKCapture::Impl {
     IRenderBackend* backend = nullptr;
     FrameSink       sink;
+    CaptureEventSink eventSink;
     CVToMetal       conv;
     void*           sharedDevice = nullptr;
 #if __has_include(<ScreenCaptureKit/ScreenCaptureKit.h>)
     SCStream*           stream   = nil;
     SGCaptureDelegate*  delegate = nil;
     dispatch_queue_t    queue    = nil;
+    bool                cancelled = false;
     bool                maxRate  = false;
     bool                cursor   = false;
 #endif
 };
 
-SCKCapture::SCKCapture(IRenderBackend* backend, FrameSink sink, void* sharedDevice) : p(new Impl) {
+SCKCapture::SCKCapture(IRenderBackend* backend, FrameSink sink, void* sharedDevice,
+                       CaptureEventSink eventSink) : p(std::make_shared<Impl>()) {
     p->backend      = backend;
     p->sink         = std::move(sink);
     p->sharedDevice = sharedDevice;
+    p->eventSink    = std::move(eventSink);
 #if __has_include(<ScreenCaptureKit/ScreenCaptureKit.h>)
     // Create the serial render queue up front so RenderQueue() is valid before Start
     // and stable across Start/Stop. The FrameSink runs here; it IS the render thread.
     p->queue = dispatch_queue_create("net.shaderglass.capture", DISPATCH_QUEUE_SERIAL);
 #endif
+}
+
+static void EmitCaptureEvent(const CaptureEventSink& eventSink, CaptureEventKind kind, const char* message) {
+    if (!eventSink) return;
+    CaptureEventSink sink = eventSink;
+    std::string msg = message ? message : "";
+    dispatch_async(dispatch_get_main_queue(), ^{
+        sink(CaptureEvent{kind, msg});
+    });
+}
+
+static void EmitCaptureEvent(const CaptureEventSink& eventSink, CaptureEventKind kind, NSError* error, const char* fallback) API_AVAILABLE(macos(12.3)) {
+    const char* msg = error ? error.localizedDescription.UTF8String : fallback;
+    EmitCaptureEvent(eventSink, kind, msg);
 }
 
 void* SCKCapture::RenderQueue() const {
@@ -217,7 +247,7 @@ void* SCKCapture::RenderQueue() const {
 }
 
 SCKCapture::~SCKCapture() {
-    if (p) { Stop(); delete p; p = nullptr; }
+    if (p) { Stop(); p.reset(); }
 }
 
 void SCKCapture::ContentSize(uint32_t& w, uint32_t& h) const {
@@ -261,7 +291,11 @@ bool SCKCapture::Start(const CaptureTarget& target, bool maxCaptureRate, bool ca
         // Share the backend's MTLDevice (J7); fall back to system default only if none given.
         id<MTLDevice> dev = p->sharedDevice ? (__bridge id<MTLDevice>)p->sharedDevice
                                             : MTLCreateSystemDefaultDevice();
-        if (!p->conv.Initialize(dev)) return false;
+        if (!p->conv.Initialize(dev)) {
+            EmitCaptureEvent(p->eventSink, CaptureEventKind::Failed, "CVMetalTextureCacheCreate failed");
+            return false;
+        }
+        p->cancelled = false;
         p->maxRate = maxCaptureRate;
         p->cursor  = captureCursor;
         // p->queue created in the ctor; it is the render thread and outlives Start/Stop.
@@ -270,6 +304,7 @@ bool SCKCapture::Start(const CaptureTarget& target, bool maxCaptureRate, bool ca
         p->delegate->_conv    = &p->conv;
         p->delegate->_backend = p->backend;
         p->delegate->_sink    = p->sink;
+        p->delegate->_eventSink = p->eventSink;
         p->delegate->_frameNo = 0;
         p->delegate->_lastW = p->delegate->_lastH = 0;
 
@@ -280,10 +315,13 @@ bool SCKCapture::Start(const CaptureTarget& target, bool maxCaptureRate, bool ca
         // didStopWithError. Stream fields are mutated on the SCK callback thread; they
         // are only read on the main thread under the synchronous-Stop drain.
         CaptureTarget t = target;
+        std::shared_ptr<Impl> state = p;
         [SCShareableContent getShareableContentWithCompletionHandler:^(SCShareableContent* content, NSError* e) {
+            if (state->cancelled) return;
             if (!content || e) {
                 fprintf(stderr, "SCKCapture: getShareableContent failed (Screen Recording not granted?): %s\n",
                         e ? e.localizedDescription.UTF8String : "no content");
+                EmitCaptureEvent(state->eventSink, CaptureEventKind::Failed, e, "Screen Recording not granted or no shareable content");
                 return;
             }
             SCContentFilter* filter = nil;
@@ -291,7 +329,16 @@ bool SCKCapture::Start(const CaptureTarget& target, bool maxCaptureRate, bool ca
             if (t.kind == CaptureTargetKind::Display) {
                 for (SCDisplay* d in content.displays) {
                     if (d.displayID == (CGDirectDisplayID)t.id) {
-                        filter = [[SCContentFilter alloc] initWithDisplay:d excludingWindows:@[]];
+                        NSMutableArray<SCWindow*>* excluded = [NSMutableArray array];
+                        for (SCWindow* win in content.windows) {
+                            for (uint32_t excludedID : t.excludedWindowIDs) {
+                                if (win.windowID == (CGWindowID)excludedID) {
+                                    [excluded addObject:win];
+                                    break;
+                                }
+                            }
+                        }
+                        filter = [[SCContentFilter alloc] initWithDisplay:d excludingWindows:excluded];
                         cw = (uint32_t)d.width; ch = (uint32_t)d.height;
                         break;
                     }
@@ -305,17 +352,31 @@ bool SCKCapture::Start(const CaptureTarget& target, bool maxCaptureRate, bool ca
                     }
                 }
             }
-            if (!filter) { fprintf(stderr, "SCKCapture: target %u not found in shareable content\n", (unsigned)t.id); return; }
+            if (!filter) {
+                fprintf(stderr, "SCKCapture: target %u not found in shareable content\n", (unsigned)t.id);
+                EmitCaptureEvent(state->eventSink, CaptureEventKind::Failed, "capture target not found");
+                return;
+            }
 
-            SCStreamConfiguration* cfg = makeConfig(cw, ch, p->maxRate, p->cursor);
+            SCStreamConfiguration* cfg = makeConfig(cw, ch, state->maxRate, state->cursor);
             NSError* se = nil;
-            SCStream* stream = [[SCStream alloc] initWithFilter:filter configuration:cfg delegate:p->delegate];
-            [stream addStreamOutput:p->delegate type:SCStreamOutputTypeScreen
-                 sampleHandlerQueue:p->queue error:&se];
-            if (se) { fprintf(stderr, "SCKCapture: addStreamOutput failed: %s\n", se.localizedDescription.UTF8String); return; }
-            p->stream = stream;
-            [p->stream startCaptureWithCompletionHandler:^(NSError* err) {
-                if (err) fprintf(stderr, "SCKCapture: startCapture failed: %s\n", err.localizedDescription.UTF8String);
+            SCStream* stream = [[SCStream alloc] initWithFilter:filter configuration:cfg delegate:state->delegate];
+            [stream addStreamOutput:state->delegate type:SCStreamOutputTypeScreen
+                 sampleHandlerQueue:state->queue error:&se];
+            if (se) {
+                fprintf(stderr, "SCKCapture: addStreamOutput failed: %s\n", se.localizedDescription.UTF8String);
+                EmitCaptureEvent(state->eventSink, CaptureEventKind::Failed, se, "addStreamOutput failed");
+                return;
+            }
+            state->stream = stream;
+            [state->stream startCaptureWithCompletionHandler:^(NSError* err) {
+                if (state->cancelled) return;
+                if (err) {
+                    fprintf(stderr, "SCKCapture: startCapture failed: %s\n", err.localizedDescription.UTF8String);
+                    EmitCaptureEvent(state->eventSink, CaptureEventKind::Failed, err, "startCapture failed");
+                } else {
+                    EmitCaptureEvent(state->eventSink, CaptureEventKind::Started, "capture started");
+                }
             }];
         }];
         return true; // accepted; capture begins asynchronously once content resolves
@@ -328,6 +389,7 @@ bool SCKCapture::Start(const CaptureTarget& target, bool maxCaptureRate, bool ca
 // (toggleCapture:, applicationWillTerminate: via shutdown) are all main-thread.
 void SCKCapture::Stop() {
     if (@available(macOS 12.3, *)) {
+        p->cancelled = true;
         if (p->stream) {
             // stopCapture is async; wait for it to actually stop before tearing down,
             // so no new didOutputSampleBuffer is dispatched after this point.
