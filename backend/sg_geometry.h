@@ -26,4 +26,42 @@ struct Point {
     int32_t y = 0;
 };
 
+struct FrameGeometry {
+    Rect sourceRect;
+    Rect clientRect;
+    Rect displayRect;
+    Rect monitorRect;
+    Rect outputRect;
+    Point cursorPoint;
+    bool cursorVisible = false;
+};
+
+class IGeometryProvider {
+public:
+    virtual ~IGeometryProvider() = default;
+    virtual FrameGeometry Geometry(uint32_t sourceWidth,
+                                   uint32_t sourceHeight,
+                                   uint32_t outputWidth,
+                                   uint32_t outputHeight) = 0;
+};
+
+class FullFrameGeometryProvider final : public IGeometryProvider {
+public:
+    FrameGeometry Geometry(uint32_t sourceWidth,
+                           uint32_t sourceHeight,
+                           uint32_t outputWidth,
+                           uint32_t outputHeight) override
+    {
+        FrameGeometry g;
+        g.sourceRect = Rect {0, 0, static_cast<int32_t>(sourceWidth), static_cast<int32_t>(sourceHeight)};
+        g.clientRect = Rect {0, 0, static_cast<int32_t>(outputWidth), static_cast<int32_t>(outputHeight)};
+        g.displayRect = g.clientRect;
+        g.monitorRect = g.clientRect;
+        g.outputRect = Rect {0, 0, static_cast<int32_t>(outputWidth), static_cast<int32_t>(outputHeight)};
+        g.cursorPoint = Point {0, 0};
+        g.cursorVisible = false;
+        return g;
+    }
+};
+
 } // namespace sg

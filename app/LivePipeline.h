@@ -43,12 +43,13 @@ typedef NS_ENUM(NSInteger, SGTargetKind) {
 @interface LivePipeline : NSObject
 
 @property(nonatomic, copy, nullable) void (^captureEventHandler)(BOOL started, NSString* _Nullable message);
+@property(nonatomic, copy, nullable) void (^engineEventHandler)(NSInteger event);
 
 // Bring up the backend on the view's CAMetalLayer at the given device-pixel size.
 // shaderDir is the directory holding passthrough.metal / crt_demo.metal (the bundle
 // Resources dir in the .app, or a relative path for loose builds). Returns nil on
 // failure (no Metal device / shader compile error).
-- (nullable instancetype)initWithLayer:(CAMetalLayer*)layer
+- (nullable instancetype)initWithLayer:(nullable CAMetalLayer*)layer
                                  width:(uint32_t)width
                                 height:(uint32_t)height
                              shaderDir:(NSString*)shaderDir;
@@ -78,6 +79,9 @@ typedef NS_ENUM(NSInteger, SGTargetKind) {
 // Render one frame into an OFFSCREEN cpuReadable texture and write it to a PNG.
 // Used by the auto-verification (--selftest) path; never reads the drawable back.
 - (BOOL)renderOffscreenToPNG:(NSString*)outPath;
+
+// Write the most recently rendered engine output to a PNG.
+- (BOOL)writeLastOutputToPNG:(NSString*)outPath;
 
 - (void)shutdown;
 

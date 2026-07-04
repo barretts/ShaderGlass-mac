@@ -23,6 +23,10 @@ namespace sg {
 // Returns false on failure. On Windows this would wrap WIC; here it's ImageIO.
 bool DecodeImageFileBGRA(const std::string& path, uint32_t& w, uint32_t& h, std::vector<uint8_t>& bgra);
 
+// Decode in-memory image bytes to tightly-packed BGRA8. Used by shared preset
+// TextureDef blobs when WIC is not available.
+bool DecodeImageMemoryBGRA(const uint8_t* data, size_t len, uint32_t& w, uint32_t& h, std::vector<uint8_t>& bgra);
+
 // Encode tightly-packed BGRA8 pixels to a PNG file (ImageIO). rowPitch defaults to w*4.
 bool EncodePNGFromBGRA(const std::string& path, const uint8_t* bgra, uint32_t w, uint32_t h, size_t rowPitch = 0);
 

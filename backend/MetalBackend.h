@@ -6,7 +6,7 @@ Concrete Metal implementation of IRenderBackend. Objective-C++ (.mm).
 This is deliberately usable HEADLESS (offscreen render-to-texture, no CAMetalLayer)
 so the abstraction can be validated without a window. InitializeHeadless() brings up
 just device + command queue; the windowed Initialize()/BeginFrame()/Present() path
-(CAMetalLayer drawable) is stubbed for now and lands with the M1 UI work.
+(CAMetalLayer drawable) drives the live app path.
 
 Every render pass is committed and waited at EndRenderPass so offscreen output is
 immediately readable via ReadbackTexture -- correctness over batching for now; the

@@ -13,6 +13,9 @@ demo/demo
 # The built .app bundle + selftest output (regenerate via app/build.sh)
 app/build/
 
+# The core static library and test outputs (regenerate via core/build_core.sh)
+core/build/
+
 # Generated render outputs (regenerate via demo/build.sh)
 demo/out/
 

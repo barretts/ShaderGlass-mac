@@ -15,8 +15,11 @@ RES="$APP/Contents/Resources"
 
 # ---- compile ----
 SRC=(
-  main.mm SGAppDelegate.mm SGMetalView.mm LivePipeline.mm
-  ../backend/MetalBackend.mm ../backend/sg_image.mm
+  main.mm SGAppDelegate.mm SGMetalView.mm LivePipeline.mm EngineBridge.mm
+  ../backend/MetalBackend.mm ../backend/sg_clock.mm ../backend/sg_image.mm
+  ../../ShaderGlass/Shader.cpp ../../ShaderGlass/Texture.cpp
+  ../../ShaderGlass/Preset.cpp ../../ShaderGlass/ShaderPass.cpp
+  ../../ShaderGlass/CursorEmulator.cpp ../../ShaderGlass/ShaderGlass.cpp
   ../capture/SCKCapture.mm
 )
 FRAMEWORKS=(
@@ -30,6 +33,7 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$RES"
 clang++ -std=c++20 -fobjc-arc -arch arm64 -mmacosx-version-min=12.3 \
   -isysroot "$SDK" \
+  -I.. -I../../ShaderGlass -I../../ShaderGC \
   "${FRAMEWORKS[@]}" \
   "${SRC[@]}" -o "$BIN"
 

@@ -16,6 +16,6 @@ fi
 clang++ -std=c++20 -fobjc-arc -arch arm64 -mmacosx-version-min=12.3 \
   -isysroot "$SDK" \
   "${FRAMEWORKS[@]}" \
-  ../backend/MetalBackend.mm SCKCapture.mm capture_test.mm -o capture_test
+  ../backend/MetalBackend.mm ../backend/sg_clock.mm SCKCapture.mm capture_test.mm -o capture_test
 
 ./capture_test ../spike/passthrough.metal
