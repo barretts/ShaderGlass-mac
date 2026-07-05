@@ -104,6 +104,26 @@ static NSArray<SGShaderPresetDescriptor*>* SGShaderPresetCatalog(void) {
                                                   shaderFilename:@"pvm_slots.metal"
                                                       legacyKind:SGShaderPVMSlots
                                                  legacyMenuIndex:9],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"noir-film"
+                                                           title:@"Noir Film"
+                                                  shaderFilename:@"noir_film.metal"
+                                                      legacyKind:SGShaderNoirFilm
+                                                 legacyMenuIndex:10],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"thermal-pop"
+                                                           title:@"Thermal Pop"
+                                                  shaderFilename:@"thermal_pop.metal"
+                                                      legacyKind:SGShaderThermalPop
+                                                 legacyMenuIndex:11],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"dream-blur"
+                                                           title:@"Dream Blur"
+                                                  shaderFilename:@"dream_blur.metal"
+                                                      legacyKind:SGShaderDreamBlur
+                                                 legacyMenuIndex:12],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"cyber-glow"
+                                                           title:@"Cyber Glow"
+                                                  shaderFilename:@"cyber_glow.metal"
+                                                      legacyKind:SGShaderCyberGlow
+                                                 legacyMenuIndex:13],
         ];
     });
     return catalog;

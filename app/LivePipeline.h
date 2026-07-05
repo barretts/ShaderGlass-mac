@@ -32,7 +32,11 @@ typedef NS_ENUM(NSInteger, SGShaderKind) {
     SGShaderPixelGrid   = 7,
     SGShaderBloomSoft   = 8,
     SGShaderPVMSlots    = 9,
-    SGShaderCount       = 10,
+    SGShaderNoirFilm    = 10,
+    SGShaderThermalPop  = 11,
+    SGShaderDreamBlur   = 12,
+    SGShaderCyberGlow   = 13,
+    SGShaderCount       = 14,
 };
 
 @interface SGShaderPresetDescriptor : NSObject
