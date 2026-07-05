@@ -1,5 +1,5 @@
 //
-// High-contrast monochrome film look with grain, mild halation, and vignette.
+// High-contrast monochrome film look with stable texture, mild halation, and vignette.
 //
 
 #include <metal_stdlib>
@@ -48,12 +48,14 @@ fragment float4 fs_main(VSOut in [[stage_in]],
     float contrast = smoothstep(0.04, 0.96, luma);
     contrast = pow(contrast, 0.72);
     float halation = smoothstep(0.55, 1.0, glow) * 0.16;
-    float grain = hash21(floor(in.position.xy) + float2(push.FrameCount, push.FrameCount * 0.41)) - 0.5;
-    float dust = step(0.996, hash21(floor(in.position.xy * 0.18) + float2(push.FrameCount * 0.03, 9.0)));
+    float grain = hash21(floor(in.position.xy)) - 0.5;
+    float paper = hash21(floor(in.position.xy * 0.11) + 19.0) - 0.5;
     float2 p = uv * 2.0 - 1.0;
     float vignette = smoothstep(1.65, 0.22, dot(p, p));
 
-    float mono = contrast + halation + grain * (0.025 + 0.025 * clamp(push.SGMaskStrength, 0.0, 1.0)) + dust * 0.20;
+    float mono = contrast + halation;
+    mono += grain * (0.010 + 0.010 * clamp(push.SGMaskStrength, 0.0, 1.0));
+    mono += paper * 0.018;
     mono *= mix(0.72, 1.06, vignette);
     float scan = sin((uv.y * push.OutputSize.y + 0.25) * 3.14159265) * 0.5 + 0.5;
     mono *= mix(1.0, mix(0.88, 1.02, scan), clamp(push.SGScanlineStrength, 0.0, 1.0));
