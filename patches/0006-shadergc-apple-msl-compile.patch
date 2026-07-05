@@ -1,0 +1,69 @@
+--- ../ShaderGC/ShaderGC.cpp	2026-07-05 01:54:04
++++ patches/tmp/ShaderGC/ShaderGC.cpp	2026-07-05 01:55:50
+@@ -32,15 +32,33 @@
+     return copy;
+ }
+ 
++static uint8_t* CopyStringBytes(const std::string& s)
++{
++    auto* copy = new uint8_t[s.size()];
++    memcpy(copy, s.data(), s.size());
++    return copy;
++}
++
+ ShaderDef ShaderGC::CompileSourceShader(SourceShaderDef& def, ostream& log, bool& warn, const ShaderCache& cache)
+ {
+     // convert GLSL to SPIRV
+     auto vertexSPIRV   = GLSL::GenerateSPIRV(def.vertexSource.c_str(), false, log, warn);
+     auto fragmentSPIRV = GLSL::GenerateSPIRV(def.fragmentSource.c_str(), true, log, warn);
+ 
++    std::string vertexMetadata;
++    std::string fragmentMetadata;
++
++#if defined(__APPLE__)
++    auto vertexMSL   = SPIRV::GenerateMSL(vertexSPIRV, false, log, warn);
++    auto fragmentMSL = SPIRV::GenerateMSL(fragmentSPIRV, true, log, warn);
++    vertexMetadata   = vertexMSL.second;
++    fragmentMetadata = fragmentMSL.second;
++#else
+     // convert SPIRV to HLSL and reflect
+     auto vertexHLSL   = SPIRV::GenerateHLSL(vertexSPIRV, false, log, warn);
+     auto fragmentHLSL = SPIRV::GenerateHLSL(fragmentSPIRV, true, log, warn);
++    vertexMetadata    = vertexHLSL.second;
++    fragmentMetadata  = fragmentHLSL.second;
+ 
+     // compile HLSL to DXBC
+     std::vector<uint8_t> vertexDXBC, fragmentDXBC;
+@@ -64,20 +82,29 @@
+         vertexDXBC = HLSL::CompileHLSL(vertexHLSL.first.c_str(), (int)vertexHLSL.first.size(), "vs_5_0", true, log, warn);
+     if(fragmentDXBC.empty())
+         fragmentDXBC = HLSL::CompileHLSL(fragmentHLSL.first.c_str(), (int)fragmentHLSL.first.size(), "ps_5_0", true, log, warn);
++#endif
+ 
+     // map declared to reflected parameters
+     std::vector<SourceShaderSampler> textures;
+-    def.params = LookupParams(def.params, textures, fragmentHLSL.second);
++    def.params = LookupParams(def.params, textures, fragmentMetadata);
+ 
+     ShaderDef sd;
+     sd.Format           = CopyString(def.format);
+     sd.VertexSource     = nullptr;
++    sd.FragmentSource   = nullptr;
++    sd.Name             = def.input.filename().string();
++
++#if defined(__APPLE__)
++    sd.VertexByteCode   = CopyStringBytes(vertexMSL.first);
++    sd.VertexLength     = vertexMSL.first.size();
++    sd.FragmentByteCode = CopyStringBytes(fragmentMSL.first);
++    sd.FragmentLength   = fragmentMSL.first.size();
++#else
+     sd.VertexByteCode   = CopyVector(vertexDXBC);
+     sd.VertexLength     = vertexDXBC.size();
+-    sd.FragmentSource   = nullptr;
+     sd.FragmentByteCode = CopyVector(fragmentDXBC);
+     sd.FragmentLength   = fragmentDXBC.size();
+-    sd.Name             = def.input.filename().string();
++#endif
+ 
+     for(const auto& p : def.params)
+     {

@@ -39,6 +39,28 @@ open ./build/ShaderGlass.app  # launch the GUI
 ./build.sh selftest           # writes build/selftest.png (byte-identical to demo/out/passthrough.png)
 ```
 
+## Private release build
+
+From `mac/`:
+
+```sh
+./release/private-build.sh
+```
+
+What it does:
+- refuses a dirty worktree by default
+- requires a stable signing identity for release mode
+- runs `core`, `backend`, `capture`, `demo`, `spike`, and `app selftest` gates
+- packages `dist/ShaderGlass-mac-<version>-<sha>.zip`
+- writes `dist/manifest.json`, `dist/checksums.txt`, and `dist/release-notes.txt`
+- records `codesign` and `spctl` results under `.logs/`
+
+For local verification while the repo is intentionally dirty:
+
+```sh
+SG_ALLOW_DIRTY_RELEASE=1 ./release/private-build.sh
+```
+
 ### Using the GUI
 1. **Shader dropdown → CRT** — flips the displayed image to the CRT effect. Needs no permission, so
    it's the quickest check that the controls are wired.

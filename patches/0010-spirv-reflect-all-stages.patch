@@ -1,0 +1,38 @@
+--- ../ShaderGC/SPIRV.cpp	2026-07-05 01:28:44
++++ patches/tmp/ShaderGC/SPIRV.cpp	2026-07-05 02:04:44
+@@ -46,11 +46,8 @@
+         std::string source = hlsl.compile();
+ 
+         std::string metadata;
+-        if(fragment)
+-        {
+-            CompilerReflection refl(bin);
+-            metadata = refl.compile();
+-        }
++        CompilerReflection refl(bin);
++        metadata = refl.compile();
+ 
+         return std::make_pair(source, metadata);
+     }
+@@ -70,7 +67,6 @@
+ 
+ #if !defined(__APPLE__)
+     (void)bin;
+-    (void)fragment;
+     throw std::runtime_error("MSL generation is only wired for macOS builds");
+ #else
+     try
+@@ -85,11 +81,8 @@
+         std::string source = msl.compile();
+ 
+         std::string metadata;
+-        if(fragment)
+-        {
+-            CompilerReflection refl(bin);
+-            metadata = refl.compile();
+-        }
++        CompilerReflection refl(bin);
++        metadata = refl.compile();
+ 
+         return std::make_pair(source, metadata);
+     }

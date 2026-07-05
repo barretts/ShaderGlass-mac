@@ -27,7 +27,16 @@ static const float sVertexBuffer[] = {
      0, 0,0,1, 0,1,   0,1,0,1, 0,0,  1, 0,0,1, 1,1,  1,1,0,1, 1,0
 };
 struct UBO  { float MVP[16]; };
-struct Push { float SourceSize[4]; float OriginalSize[4]; float OutputSize[4]; uint32_t FrameCount; };
+struct Push {
+    float SourceSize[4];
+    float OriginalSize[4];
+    float OutputSize[4];
+    uint32_t FrameCount;
+    float SGIntensity;
+    float SGScanlineStrength;
+    float SGMaskStrength;
+    float SGColorBoost;
+};
 
 static std::string readFile(const char* path) {
     std::ifstream f(path); if (!f){fprintf(stderr,"FAIL: read %s\n",path);exit(2);}
@@ -101,6 +110,7 @@ int main(int argc, char** argv) {
 
     UBO u; memset(u.MVP,0,sizeof(u.MVP)); u.MVP[0]=2;u.MVP[5]=2;u.MVP[12]=-1;u.MVP[13]=-1;u.MVP[15]=1;
     Push pu; memset(&pu,0,sizeof(pu)); pu.SourceSize[0]=W;pu.SourceSize[1]=H;pu.OutputSize[0]=W;pu.OutputSize[1]=H;
+    pu.SGIntensity = 1.0f; pu.SGScanlineStrength = 0.65f; pu.SGMaskStrength = 0.70f; pu.SGColorBoost = 1.0f;
     be.UpdateConstantBuffer(ubo,&u,sizeof(u)); be.UpdateConstantBuffer(push,&pu,sizeof(pu));
 
     float clear[4]={0,0,0,1};
@@ -142,6 +152,7 @@ int main(int argc, char** argv) {
         BackendBuffer* pb2 = be.CreateConstantBuffer(sizeof(Push));
         UBO u2; memset(u2.MVP,0,sizeof(u2.MVP)); u2.MVP[0]=2;u2.MVP[5]=2;u2.MVP[12]=-1;u2.MVP[13]=-1;u2.MVP[15]=1;
         Push p2; memset(&p2,0,sizeof(p2)); p2.SourceSize[0]=S;p2.SourceSize[1]=S;p2.OutputSize[0]=S;p2.OutputSize[1]=S;
+        p2.SGIntensity = 1.0f; p2.SGScanlineStrength = 0.65f; p2.SGMaskStrength = 0.70f; p2.SGColorBoost = 1.0f;
         be.UpdateConstantBuffer(ub,&u2,sizeof(u2)); be.UpdateConstantBuffer(pb2,&p2,sizeof(p2));
 
         std::vector<CVPixelBufferRef> pbs;

@@ -28,7 +28,16 @@ static const float sVertexBuffer[] = {
      0, 0,0,1, 0,1,   0,1,0,1, 0,0,  1, 0,0,1, 1,1,  1,1,0,1, 1,0
 };
 struct UBO  { float MVP[16]; };
-struct Push { float SourceSize[4]; float OriginalSize[4]; float OutputSize[4]; uint32_t FrameCount; };
+struct Push {
+    float SourceSize[4];
+    float OriginalSize[4];
+    float OutputSize[4];
+    uint32_t FrameCount;
+    float SGIntensity;
+    float SGScanlineStrength;
+    float SGMaskStrength;
+    float SGColorBoost;
+};
 
 static std::string readFile(const char* path) {
     std::ifstream f(path);
@@ -77,6 +86,10 @@ int main(int argc, char** argv) {
     Push pu; memset(&pu,0,sizeof(pu));
     pu.SourceSize[0]=W; pu.SourceSize[1]=H; pu.SourceSize[2]=1.0f/W; pu.SourceSize[3]=1.0f/H;
     pu.OutputSize[0]=W; pu.OutputSize[1]=H; pu.OutputSize[2]=1.0f/W; pu.OutputSize[3]=1.0f/H;
+    pu.SGIntensity = 1.0f;
+    pu.SGScanlineStrength = 0.65f;
+    pu.SGMaskStrength = 0.70f;
+    pu.SGColorBoost = 1.0f;
     be.UpdateConstantBuffer(ubo,  &u,  sizeof(u));
     be.UpdateConstantBuffer(push, &pu, sizeof(pu));
 
@@ -116,6 +129,7 @@ int main(int argc, char** argv) {
 
         UBO u2; memset(u2.MVP,0,sizeof(u2.MVP)); u2.MVP[0]=2;u2.MVP[5]=2;u2.MVP[12]=-1;u2.MVP[13]=-1;u2.MVP[15]=1;
         Push p2; memset(&p2,0,sizeof(p2)); p2.SourceSize[0]=8;p2.SourceSize[1]=8;p2.OutputSize[0]=8;p2.OutputSize[1]=8;
+        p2.SGIntensity = 1.0f; p2.SGScanlineStrength = 0.65f; p2.SGMaskStrength = 0.70f; p2.SGColorBoost = 1.0f;
         BackendBuffer* ub2 = be.CreateConstantBuffer(sizeof(UBO));
         BackendBuffer* pb2 = be.CreateConstantBuffer(sizeof(Push));
         BackendSampler* smp2 = be.CreateSampler(SamplerDesc{Filter::Nearest, Wrap::Clamp});
@@ -157,6 +171,7 @@ int main(int argc, char** argv) {
 
         UBO u3; memset(u3.MVP,0,sizeof(u3.MVP)); u3.MVP[0]=2;u3.MVP[5]=2;u3.MVP[12]=-1;u3.MVP[13]=-1;u3.MVP[15]=1;
         Push p3; memset(&p3,0,sizeof(p3)); p3.SourceSize[0]=S;p3.SourceSize[1]=S;p3.OutputSize[0]=S;p3.OutputSize[1]=S;
+        p3.SGIntensity = 1.0f; p3.SGScanlineStrength = 0.65f; p3.SGMaskStrength = 0.70f; p3.SGColorBoost = 1.0f;
         BackendBuffer* ub3=be.CreateConstantBuffer(sizeof(UBO)); BackendBuffer* pb3=be.CreateConstantBuffer(sizeof(Push));
         BackendBuffer* vb3=be.CreateVertexBuffer(sVertexBuffer,sizeof(sVertexBuffer));
         BackendSampler* sm3=be.CreateSampler(SamplerDesc{});

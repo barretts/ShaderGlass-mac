@@ -47,7 +47,16 @@ static const float sVertexBuffer[] = {
 };
 
 struct UBO  { float MVP[16]; };
-struct Push { float SourceSize[4]; float OriginalSize[4]; float OutputSize[4]; uint32_t FrameCount; };
+struct Push {
+    float SourceSize[4];
+    float OriginalSize[4];
+    float OutputSize[4];
+    uint32_t FrameCount;
+    float SGIntensity;
+    float SGScanlineStrength;
+    float SGMaskStrength;
+    float SGColorBoost;
+};
 
 static const int GEOM_IDX = 30;
 
@@ -105,6 +114,10 @@ static std::vector<uint8_t> renderPass(id<MTLTexture> inTex, int outW, int outH,
     push.SourceSize[2] = 1.0f/srcW; push.SourceSize[3] = 1.0f/srcH;
     push.OutputSize[0] = outW; push.OutputSize[1] = outH;
     push.OutputSize[2] = 1.0f/outW; push.OutputSize[3] = 1.0f/outH;
+    push.SGIntensity = 1.0f;
+    push.SGScanlineStrength = 0.65f;
+    push.SGMaskStrength = 0.70f;
+    push.SGColorBoost = 1.0f;
 
     id<MTLBuffer> uboBuf  = [gDev newBufferWithBytes:&ubo  length:sizeof(ubo)  options:MTLResourceStorageModeShared];
     id<MTLBuffer> pushBuf = [gDev newBufferWithBytes:&push length:sizeof(push) options:MTLResourceStorageModeShared];

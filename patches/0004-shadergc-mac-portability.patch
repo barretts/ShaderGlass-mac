@@ -1,0 +1,20 @@
+--- ../ShaderGC/ShaderGC.cpp	2026-06-06 01:12:35
++++ patches/tmp/ShaderGC/ShaderGC.cpp	2026-07-05 01:53:46
+@@ -21,7 +21,7 @@
+ static char* CopyString(const std::string& s)
+ {
+     auto copy = new char[s.size() + 1];
+-    strcpy_s(copy, s.size() + 1, s.c_str());
++    memcpy(copy, s.c_str(), s.size() + 1);
+     return copy;
+ }
+ 
+@@ -516,7 +516,7 @@
+ 
+ PresetDef* ShaderGC::CompilePreset(std::filesystem::path input, ostream& log, bool& warn, const ShaderCache& cache)
+ {
+-    if(_stricmp(input.extension().string().c_str(), ".slang") == 0)
++    if(input.extension() == ".slang")
+         return CompileShader(input, log, warn, cache);
+ 
+     SourcePresetDef sp(input, SourceShaderInfo());

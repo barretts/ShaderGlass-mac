@@ -83,6 +83,8 @@ private:
     std::vector<BackendTexture*> m_intermediateTextures;
     std::vector<BackendTexture*> m_feedbackTextures;
     bool m_requiresFeedback {false};
+    uint32_t m_sourceWidth {0};
+    uint32_t m_sourceHeight {0};
     uint32_t m_chainWidth {0};
     uint32_t m_chainHeight {0};
     BackendTexture* m_lastOutput {nullptr};

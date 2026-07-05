@@ -1,0 +1,111 @@
+--- ../ShaderGC/pch.h	2026-06-06 01:12:35
++++ patches/tmp/ShaderGC/pch.h	2026-07-05 01:26:04
+@@ -7,7 +7,15 @@
+ #ifndef PCH_H
+ #define PCH_H
+ 
+-// add headers that you want to pre-compile here
++#ifdef _WIN32
+ #include "framework.h"
++#else
++#include <ostream>
++#include <sstream>
++#include <stdexcept>
++#include <string>
++#include <utility>
++#include <vector>
++#endif
+ 
+ #endif //PCH_H
+--- ../ShaderGC/SPIRV.h	2026-06-06 01:12:35
++++ patches/tmp/ShaderGC/SPIRV.h	2026-07-05 01:26:04
+@@ -11,4 +11,5 @@
+ {
+ public:
+     static std::pair<std::string, std::string> GenerateHLSL(const std::vector<uint32_t>& bin, bool fragment, std::ostream& log, bool& warn);
+-};
+\ No newline at end of file
++    static std::pair<std::string, std::string> GenerateMSL(const std::vector<uint32_t>& bin, bool fragment, std::ostream& log, bool& warn);
++};
+--- ../ShaderGC/SPIRV.cpp	2026-06-06 01:12:35
++++ patches/tmp/ShaderGC/SPIRV.cpp	2026-07-05 01:26:04
+@@ -11,7 +11,11 @@
+ 
+ #include "include/spirv_hlsl.hpp"
+ #include "include/spirv_reflect.hpp"
++#if defined(__APPLE__)
++#include "../mac/deps/SPIRV-Cross/spirv_msl.hpp"
++#endif
+ 
++#ifdef _WIN32
+ #ifdef _DEBUG
+ #    pragma comment(lib, "spirv-cross-cored.lib")
+ #    pragma comment(lib, "spirv-cross-hlsld.lib")
+@@ -23,13 +27,12 @@
+ #    pragma comment(lib, "spirv-cross-glsl.lib")
+ #    pragma comment(lib, "spirv-cross-reflect.lib")
+ #endif
++#endif
+ 
+ using namespace SPIRV_CROSS_NAMESPACE;
+ 
+ std::pair<std::string, std::string> SPIRV::GenerateHLSL(const std::vector<uint32_t>& bin, bool fragment, std::ostream& log, bool& warn)
+ {
+-    //std::cout << "GenerateHLSL...";
+-
+     try
+     {
+         CompilerHLSL hlsl(bin);
+@@ -46,8 +49,6 @@
+             metadata = refl.compile();
+         }
+ 
+-        //std::cout << "OK" << std::endl;
+-
+         return std::make_pair(source, metadata);
+     }
+     catch(std::exception& ex)
+@@ -58,3 +59,43 @@
+         throw std::runtime_error(msg.str());
+     }
+ }
++
++std::pair<std::string, std::string> SPIRV::GenerateMSL(const std::vector<uint32_t>& bin, bool fragment, std::ostream& log, bool& warn)
++{
++    (void)log;
++    (void)warn;
++
++#if !defined(__APPLE__)
++    (void)bin;
++    (void)fragment;
++    throw std::runtime_error("MSL generation is only wired for macOS builds");
++#else
++    try
++    {
++        CompilerMSL msl(bin);
++
++        CompilerMSL::Options options;
++        options.platform = CompilerMSL::Options::macOS;
++        options.set_msl_version(2, 1, 0);
++        options.enable_decoration_binding = true;
++        msl.set_msl_options(options);
++        std::string source = msl.compile();
++
++        std::string metadata;
++        if(fragment)
++        {
++            CompilerReflection refl(bin);
++            metadata = refl.compile();
++        }
++
++        return std::make_pair(source, metadata);
++    }
++    catch(std::exception& ex)
++    {
++        std::ostringstream msg;
++        msg << "MSL Generation Error" << std::endl;
++        msg << ex.what();
++        throw std::runtime_error(msg.str());
++    }
++#endif
++}

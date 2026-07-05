@@ -1,0 +1,10 @@
+ShaderGlass private macOS build
+
+Version: 0.1
+Git SHA: 73b92b22b5f17bcf46b8e6a4c10aa6dccac1e499
+Artifact: ShaderGlass-mac-0.1-73b92b22b5f1.zip
+
+This is a private signed build for direct tester distribution.
+It is not notarized.
+Screen Recording permission is still required for live capture paths.
+If Gatekeeper or spctl rejects this build, that result is expected for a private self-signed distribution and is recorded in dist/manifest.json.

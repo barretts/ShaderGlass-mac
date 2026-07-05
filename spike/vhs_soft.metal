@@ -6,7 +6,10 @@
 using namespace metal;
 
 struct UBO  { float4x4 MVP; };
-struct Push { float4 SourceSize; float4 OriginalSize; float4 OutputSize; uint FrameCount; };
+struct Push {
+    float4 SourceSize; float4 OriginalSize; float4 OutputSize; uint FrameCount;
+    float SGIntensity; float SGScanlineStrength; float SGMaskStrength; float SGColorBoost;
+};
 
 struct VSIn  { float4 position [[attribute(0)]]; float2 texcoord [[attribute(1)]]; };
 struct VSOut { float4 position [[position]]; float2 vTexCoord; };
@@ -56,7 +59,13 @@ fragment float4 fs_main(VSOut in [[stage_in]],
     col += noise * 0.025;
     col += trackingLine * (0.09 + lineNoise * 0.10);
     col *= 1.0 + trackingLine * 0.12;
-    col *= mix(0.91, 1.02, scan);
-    col = clamp(col * float3(1.03, 0.99, 0.94), 0.0, 1.0);
+    col *= mix(1.0, mix(0.91, 1.02, scan), clamp(push.SGScanlineStrength, 0.0, 1.0));
+    float phase = fract(in.position.x / 3.0);
+    float3 mask = phase < 0.333 ? float3(1.08, 0.90, 0.90) :
+                  phase < 0.666 ? float3(0.90, 1.05, 0.90) :
+                                  float3(0.90, 0.92, 1.08);
+    col *= mix(float3(1.0), mask, clamp(push.SGMaskStrength, 0.0, 1.0));
+    col = mix(float3(dot(col, float3(0.299, 0.587, 0.114))), col, 0.25 + clamp(push.SGColorBoost, 0.0, 1.5) * 0.75);
+    col = clamp(col * float3(1.03, 0.99, 0.94) * push.SGIntensity, 0.0, 1.0);
     return float4(col, 1.0);
 }

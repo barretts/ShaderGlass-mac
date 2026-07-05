@@ -11,7 +11,35 @@ never touches a drawable / TCC).
 #import <ScreenCaptureKit/ScreenCaptureKit.h>
 #import "SGAppDelegate.h"
 #import "LivePipeline.h"
+#include "../backend/sg_image.h"
 #include <algorithm>
+#include <climits>
+#include <vector>
+
+using namespace sg;
+
+static long maxChannelDiff(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b) {
+    if (a.size() != b.size()) return LONG_MAX;
+    long maxd = 0;
+    for (size_t i = 0; i < a.size(); ++i)
+        maxd = std::max(maxd, labs((long)a[i] - (long)b[i]));
+    return maxd;
+}
+
+static long columnMaxDiff(const std::vector<uint8_t>& a,
+                          const std::vector<uint8_t>& b,
+                          uint32_t w,
+                          uint32_t h,
+                          uint32_t x) {
+    if (a.size() != b.size() || x >= w) return LONG_MAX;
+    long maxd = 0;
+    for (uint32_t y = 0; y < h; ++y) {
+        size_t base = ((size_t)y * w + x) * 4;
+        for (size_t c = 0; c < 4; ++c)
+            maxd = std::max(maxd, labs((long)a[base + c] - (long)b[base + c]));
+    }
+    return maxd;
+}
 
 static int runSelftest(NSString* outPath) {
     @autoreleasepool {
@@ -33,6 +61,105 @@ static int runSelftest(NSString* outPath) {
     }
 }
 
+static int runSplitSelftest(NSString* outPath) {
+    @autoreleasepool {
+        NSString* res = [[NSBundle mainBundle] resourcePath];
+        NSFileManager* fm = [NSFileManager defaultManager];
+        BOOL bundled = res && [fm fileExistsAtPath:[res stringByAppendingPathComponent:@"passthrough.metal"]];
+        NSString* shaderDir = bundled ? res : @"../spike";
+        NSString* img = bundled ? [res stringByAppendingPathComponent:@"screen6.png"]
+                                : @"../../images/screen6.png";
+        LivePipeline* pipe = [[LivePipeline alloc] initWithLayer:nil width:0 height:0 shaderDir:shaderDir];
+        if (!pipe) { fprintf(stderr, "split-selftest FAIL: pipeline init (shaderDir=%s)\n", shaderDir.UTF8String); return 2; }
+        if (![pipe setStaticImagePath:img]) { fprintf(stderr, "split-selftest FAIL: image load (%s)\n", img.UTF8String); return 2; }
+
+        NSString* outDir = [outPath stringByDeletingLastPathComponent];
+        NSString* outStem = [[outPath lastPathComponent] stringByDeletingPathExtension];
+        NSString* originalPath = [outDir stringByAppendingPathComponent:[outStem stringByAppendingString:@"-original.png"]];
+        NSString* processedPath = [outDir stringByAppendingPathComponent:[outStem stringByAppendingString:@"-processed.png"]];
+        NSString* splitZeroPath = [outDir stringByAppendingPathComponent:[outStem stringByAppendingString:@"-split0.png"]];
+        NSString* splitHundredPath = [outDir stringByAppendingPathComponent:[outStem stringByAppendingString:@"-split100.png"]];
+
+        uint32_t w = 0, h = 0;
+        std::vector<uint8_t> sourcePixels;
+        if (!DecodeImageFileBGRA(img.UTF8String, w, h, sourcePixels) || !w || !h) {
+            fprintf(stderr, "split-selftest FAIL: could not decode source pixels\n");
+            return 2;
+        }
+
+        [pipe setCompareMode:SGCompareModeOff];
+        [pipe setShaderPresetIdentifier:@"passthrough"];
+        if (![pipe renderOffscreenToPNG:originalPath]) { fprintf(stderr, "split-selftest FAIL: original render\n"); return 1; }
+
+        [pipe setShaderPresetIdentifier:@"crt"];
+        if (![pipe renderOffscreenToPNG:processedPath]) { fprintf(stderr, "split-selftest FAIL: processed render\n"); return 1; }
+
+        [pipe setCompareMode:SGCompareModeSplit];
+        [pipe setCompareSplitPosition:0.0f];
+        if (![pipe renderOffscreenToPNG:splitZeroPath]) { fprintf(stderr, "split-selftest FAIL: split 0 render\n"); return 1; }
+
+        [pipe setCompareSplitPosition:0.5f];
+        if (![pipe renderOffscreenToPNG:outPath]) { fprintf(stderr, "split-selftest FAIL: split 50 render\n"); return 1; }
+
+        [pipe setCompareSplitPosition:1.0f];
+        if (![pipe renderOffscreenToPNG:splitHundredPath]) { fprintf(stderr, "split-selftest FAIL: split 100 render\n"); return 1; }
+
+        std::vector<uint8_t> originalPixels, processedPixels, splitZeroPixels, splitFiftyPixels, splitHundredPixels;
+        uint32_t ow = 0, oh = 0, pw = 0, ph = 0, zW = 0, zH = 0, fW = 0, fH = 0, hW = 0, hH = 0;
+        if (!DecodeImageFileBGRA(originalPath.UTF8String, ow, oh, originalPixels) ||
+            !DecodeImageFileBGRA(processedPath.UTF8String, pw, ph, processedPixels) ||
+            !DecodeImageFileBGRA(splitZeroPath.UTF8String, zW, zH, splitZeroPixels) ||
+            !DecodeImageFileBGRA(outPath.UTF8String, fW, fH, splitFiftyPixels) ||
+            !DecodeImageFileBGRA(splitHundredPath.UTF8String, hW, hH, splitHundredPixels)) {
+            fprintf(stderr, "split-selftest FAIL: could not decode rendered outputs\n");
+            return 1;
+        }
+        if (ow != w || oh != h || pw != w || ph != h || zW != w || zH != h || fW != w || fH != h || hW != w || hH != h) {
+            fprintf(stderr, "split-selftest FAIL: unexpected output dimensions\n");
+            return 1;
+        }
+
+        long splitZeroDiff = maxChannelDiff(splitZeroPixels, processedPixels);
+        if (splitZeroDiff != 0) {
+            fprintf(stderr, "split-selftest FAIL: split 0 does not match processed baseline (max=%ld)\n", splitZeroDiff);
+            return 1;
+        }
+
+        uint32_t leftColumn = std::max<uint32_t>(1, w / 4);
+        uint32_t rightColumn = std::min<uint32_t>(w - 2, (w * 3) / 4);
+        uint32_t nearRightEdge = std::max<uint32_t>(1, w - 3);
+        long originalProcessedLeft = columnMaxDiff(originalPixels, processedPixels, w, h, leftColumn);
+        long originalProcessedRight = columnMaxDiff(originalPixels, processedPixels, w, h, rightColumn);
+        if (originalProcessedLeft == 0 && originalProcessedRight == 0) {
+            fprintf(stderr, "split-selftest FAIL: processed baseline is not distinguishable from original at sample columns\n");
+            return 1;
+        }
+
+        long splitLeftDiff = columnMaxDiff(splitFiftyPixels, originalPixels, w, h, leftColumn);
+        if (splitLeftDiff != 0) {
+            fprintf(stderr, "split-selftest FAIL: split 50 left column does not match original (max=%ld)\n", splitLeftDiff);
+            return 1;
+        }
+        long splitRightDiff = columnMaxDiff(splitFiftyPixels, processedPixels, w, h, rightColumn);
+        if (splitRightDiff != 0) {
+            fprintf(stderr, "split-selftest FAIL: split 50 right column does not match processed (max=%ld)\n", splitRightDiff);
+            return 1;
+        }
+        long splitHundredDiff = columnMaxDiff(splitHundredPixels, originalPixels, w, h, nearRightEdge);
+        if (splitHundredDiff != 0) {
+            fprintf(stderr, "split-selftest FAIL: split 100 interior column does not match original (max=%ld)\n", splitHundredDiff);
+            return 1;
+        }
+
+        [fm removeItemAtPath:originalPath error:nil];
+        [fm removeItemAtPath:processedPath error:nil];
+        [fm removeItemAtPath:splitZeroPath error:nil];
+        [fm removeItemAtPath:splitHundredPath error:nil];
+        fprintf(stderr, "split-selftest OK: wrote %s\n", outPath.UTF8String);
+        return 0;
+    }
+}
+
 static void runLoopUntil(NSTimeInterval seconds, BOOL (^done)(void)) {
     NSDate* deadline = [NSDate dateWithTimeIntervalSinceNow:seconds];
     while (!done() && [deadline timeIntervalSinceNow] > 0) {
@@ -49,6 +176,20 @@ static NSString* shaderDirForCommandLine() {
     if (res && [fm fileExistsAtPath:[res stringByAppendingPathComponent:@"passthrough.metal"]])
         return res;
     return @"../spike";
+}
+
+static BOOL shouldUseWindowForSmoke(SCWindow* window) API_AVAILABLE(macos(12.3)) {
+    if (!window) return NO;
+    if (!window.title.length || window.frame.size.width < 64 || window.frame.size.height < 64) return NO;
+    NSString* appName = window.owningApplication.applicationName ?: @"";
+    NSString* bundleID = window.owningApplication.bundleIdentifier ?: @"";
+    if ([window.title localizedCaseInsensitiveContainsString:@"Fullscreen Backdrop"]) return NO;
+    if ([window.title localizedCaseInsensitiveContainsString:@"Wallpaper"]) return NO;
+    if ([appName localizedCaseInsensitiveContainsString:@"WindowManager"]) return NO;
+    if ([appName localizedCaseInsensitiveContainsString:@"Dock"]) return NO;
+    if ([bundleID isEqualToString:@"com.apple.WindowManager"]) return NO;
+    if ([bundleID isEqualToString:@"com.apple.dock"]) return NO;
+    return YES;
 }
 
 static int runCaptureSmoke(BOOL windowMode, NSString* outPath) {
@@ -74,7 +215,7 @@ static int runCaptureSmoke(BOOL windowMode, NSString* outPath) {
             uint32_t width = 0, height = 0;
             if (windowMode) {
                 for (SCWindow* w in content.windows) {
-                    if (!w.title.length || w.frame.size.width < 64 || w.frame.size.height < 64) continue;
+                    if (!shouldUseWindowForSmoke(w)) continue;
                     targetID = (uint32_t)w.windowID;
                     width = (uint32_t)w.frame.size.width;
                     height = (uint32_t)w.frame.size.height;
@@ -300,6 +441,8 @@ int main(int argc, const char* argv[]) {
         for (int i = 1; i < argc; ++i) {
             if (strcmp(argv[i], "--selftest") == 0 && i + 1 < argc)
                 return runSelftest([NSString stringWithUTF8String:argv[i+1]]);
+            if (strcmp(argv[i], "--selftest-split") == 0 && i + 1 < argc)
+                return runSplitSelftest([NSString stringWithUTF8String:argv[i+1]]);
             if (strcmp(argv[i], "--smoke-display") == 0 && i + 1 < argc)
                 return runCaptureSmoke(NO, [NSString stringWithUTF8String:argv[i+1]]);
             if (strcmp(argv[i], "--smoke-window") == 0 && i + 1 < argc)
@@ -312,11 +455,20 @@ int main(int argc, const char* argv[]) {
         SGAppDelegate* delegate = [[SGAppDelegate alloc] init];
         app.delegate = delegate;
 
-        // minimal menu bar with Quit (Cmd-Q)
+        // minimal menu bar with compare, export, and quit
         NSMenu* menubar = [[NSMenu alloc] init];
         NSMenuItem* appItem = [[NSMenuItem alloc] init];
         [menubar addItem:appItem];
         NSMenu* appMenu = [[NSMenu alloc] init];
+        NSMenuItem* splitCompareItem = [appMenu addItemWithTitle:@"Toggle Split Compare"
+                                                          action:@selector(toggleSplitCompare:)
+                                                   keyEquivalent:@"/"];
+        splitCompareItem.target = delegate;
+        NSMenuItem* exportItem = [appMenu addItemWithTitle:@"Export Moment..."
+                                                    action:@selector(exportMoment:)
+                                             keyEquivalent:@"e"];
+        exportItem.target = delegate;
+        [appMenu addItem:[NSMenuItem separatorItem]];
         [appMenu addItemWithTitle:@"Quit ShaderGlass" action:@selector(terminate:) keyEquivalent:@"q"];
         appItem.submenu = appMenu;
         app.mainMenu = menubar;

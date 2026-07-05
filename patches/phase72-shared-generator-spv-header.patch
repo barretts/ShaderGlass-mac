@@ -1,0 +1,15 @@
+--- ../ShaderGC/SPIRV.h	2026-07-05 01:26:35
++++ patches/tmp/ShaderGC/SPIRV.h	2026-07-05 01:27:08
+@@ -7,6 +7,12 @@
+ 
+ #pragma once
+ 
++#include <cstdint>
++#include <ostream>
++#include <string>
++#include <utility>
++#include <vector>
++
+ class SPIRV
+ {
+ public:

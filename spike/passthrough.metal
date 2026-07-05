@@ -30,6 +30,10 @@ struct Push {
     float4 OriginalSize; // offset 16
     float4 OutputSize;   // offset 32
     uint   FrameCount;   // offset 48
+    float  SGIntensity;
+    float  SGScanlineStrength;
+    float  SGMaskStrength;
+    float  SGColorBoost;
 };
 
 struct VSIn {
@@ -54,8 +58,23 @@ vertex VSOut vs_main(VSIn in [[stage_in]],
 }
 
 fragment float4 fs_main(VSOut in [[stage_in]],
+                        constant Push& push [[buffer(1)]],
                         texture2d<float> Source        [[texture(2)]],
                         sampler          Source_sampler [[sampler(2)]])
 {
-    return float4(Source.sample(Source_sampler, in.vTexCoord).xyz, 1.0);
+    float3 col = Source.sample(Source_sampler, in.vTexCoord).xyz;
+    float line = sin((in.vTexCoord.y * push.OutputSize.y + 0.15) * 3.14159265) * 0.5 + 0.5;
+    float phase = fract(in.position.x / 3.0);
+    float3 mask = phase < 0.333 ? float3(1.10, 0.88, 0.88) :
+                  phase < 0.666 ? float3(0.88, 1.08, 0.88) :
+                                  float3(0.88, 0.92, 1.10);
+    float luma = dot(col, float3(0.299, 0.587, 0.114));
+    float colorMix = clamp(push.SGColorBoost, 0.0, 1.5);
+    float maskMix = clamp((push.SGMaskStrength - 0.70) / 0.80, 0.0, 1.0);
+    float scanMix = clamp((push.SGScanlineStrength - 0.65) / 0.85, 0.0, 1.0);
+    col = mix(float3(luma), col, colorMix);
+    col *= mix(float3(1.0), mask, maskMix);
+    col *= mix(1.0, mix(0.62, 1.0, line), scanMix);
+    col *= push.SGIntensity;
+    return float4(clamp(col, 0.0, 1.0), 1.0);
 }

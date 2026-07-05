@@ -6,7 +6,10 @@
 using namespace metal;
 
 struct UBO  { float4x4 MVP; };
-struct Push { float4 SourceSize; float4 OriginalSize; float4 OutputSize; uint FrameCount; };
+struct Push {
+    float4 SourceSize; float4 OriginalSize; float4 OutputSize; uint FrameCount;
+    float SGIntensity; float SGScanlineStrength; float SGMaskStrength; float SGColorBoost;
+};
 
 struct VSIn  { float4 position [[attribute(0)]]; float2 texcoord [[attribute(1)]]; };
 struct VSOut { float4 position [[position]]; float2 vTexCoord; };
@@ -32,6 +35,7 @@ fragment float4 fs_main(VSOut in [[stage_in]],
     float vignette = smoothstep(1.45, 0.15, dot(p, p));
     float3 green = float3(0.18, 1.0, 0.32) * pow(luma, 0.86);
     green += luma * luma * float3(0.02, 0.22, 0.06);
-    green *= mix(0.62, 1.08, scan) * mix(0.68, 1.04, vignette);
-    return float4(clamp(green, 0.0, 1.0), 1.0);
+    green *= mix(1.0, mix(0.62, 1.08, scan), clamp(push.SGScanlineStrength, 0.0, 1.0)) * mix(0.68, 1.04, vignette);
+    green = mix(float3(dot(green, float3(0.3333))), green, 0.25 + clamp(push.SGColorBoost, 0.0, 1.5) * 0.75);
+    return float4(clamp(green * push.SGIntensity, 0.0, 1.0), 1.0);
 }

@@ -17,6 +17,7 @@ while it owns the C++ MetalBackend/SCKCapture.
 #pragma once
 #import <Foundation/Foundation.h>
 #import <QuartzCore/CAMetalLayer.h>
+#import "EngineBridge.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -34,6 +35,16 @@ typedef NS_ENUM(NSInteger, SGShaderKind) {
     SGShaderCount       = 10,
 };
 
+@interface SGShaderPresetDescriptor : NSObject
+
+@property(nonatomic, readonly, copy) NSString* identifier;
+@property(nonatomic, readonly, copy) NSString* title;
+@property(nonatomic, readonly, copy) NSString* shaderFilename;
+@property(nonatomic, readonly) SGShaderKind legacyKind;
+@property(nonatomic, readonly) NSInteger legacyMenuIndex;
+
+@end
+
 // Capture target kinds mirrored for the UI layer (avoids exposing sg:: types here).
 typedef NS_ENUM(NSInteger, SGTargetKind) {
     SGTargetDisplay = 0,
@@ -44,6 +55,16 @@ typedef NS_ENUM(NSInteger, SGTargetKind) {
 
 @property(nonatomic, copy, nullable) void (^captureEventHandler)(BOOL started, NSString* _Nullable message);
 @property(nonatomic, copy, nullable) void (^engineEventHandler)(NSInteger event);
+@property(nonatomic, readonly, copy) NSString* activeShaderPresetIdentifier;
+@property(nonatomic, readonly) SGShaderPresetDescriptor* activeShaderPresetDescriptor;
+@property(nonatomic, readonly, copy, nullable) SGPresetMetadata* activePresetMetadata;
+@property(nonatomic, readonly, getter=isBypassCompareActive) BOOL bypassCompareActive;
+@property(nonatomic, readonly) SGCompareMode compareMode;
+@property(nonatomic, readonly) float compareSplitPosition;
+
++ (NSArray<SGShaderPresetDescriptor*>*)shaderPresetCatalog;
++ (nullable SGShaderPresetDescriptor*)shaderPresetForIdentifier:(NSString*)identifier;
++ (nullable SGShaderPresetDescriptor*)shaderPresetForLegacyKind:(SGShaderKind)kind;
 
 // Bring up the backend on the view's CAMetalLayer at the given device-pixel size.
 // shaderDir is the directory holding passthrough.metal / crt_demo.metal (the bundle
@@ -65,7 +86,19 @@ typedef NS_ENUM(NSInteger, SGTargetKind) {
 - (void)resizeToWidth:(uint32_t)width height:(uint32_t)height;
 
 // Hot-swap the active shader (consumed at the top of the next frame; thread-safe).
+- (BOOL)setShaderPresetIdentifier:(NSString*)identifier;
 - (void)setShaderKind:(SGShaderKind)kind;
+- (NSArray<SGParameterSnapshot*>*)parameterSnapshots;
+- (nullable SGParameterSnapshot*)parameterSnapshotForIdentifier:(NSString*)identifier;
+- (nullable SGParameterSnapshot*)parameterSnapshotNamed:(NSString*)name;
+- (BOOL)updateParameterValue:(float)value forIdentifier:(NSString*)identifier;
+- (BOOL)resetParameterForIdentifier:(NSString*)identifier;
+- (BOOL)resetAllParameters;
+- (BOOL)beginBypassCompare;
+- (BOOL)endBypassCompare;
+- (BOOL)setCompareMode:(SGCompareMode)mode;
+- (BOOL)setCompareSplitPosition:(float)splitPosition;
+- (void)exportMomentToURL:(NSURL*)url completion:(void (^)(BOOL success, NSString* _Nullable message))completion;
 
 // L3+: start/stop live capture of a target. Runs the capture on its own serial
 // queue; the FrameSink renders+presents per frame. id is CGDirectDisplayID or

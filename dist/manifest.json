@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "name": "ShaderGlass",
+  "channel": "private",
+  "version": "0.1",
+  "git_sha": "73b92b22b5f17bcf46b8e6a4c10aa6dccac1e499",
+  "build_date_utc": "2026-07-05T06:51:32Z",
+  "bundle_id": "net.shaderglass.mac",
+  "minimum_macos": "12.3",
+  "signing_identity": "ShaderGlassDev",
+  "artifact": {
+    "path": "dist/ShaderGlass-mac-0.1-73b92b22b5f1.zip",
+    "sha256": "96df086e259dbaba7b5985198fad607e7e434a8cdef88a6f3aff58948dbcd8fe"
+  },
+  "logs": {
+    "core_build": ".logs/release-20260705T065111Z-core-build.log",
+    "backend_test": ".logs/release-20260705T065111Z-backend-test.log",
+    "capture_test": ".logs/release-20260705T065111Z-capture-test.log",
+    "demo_build": ".logs/release-20260705T065111Z-demo-build.log",
+    "spike_build": ".logs/release-20260705T065111Z-spike-build.log",
+    "app_selftest": ".logs/release-20260705T065111Z-app-selftest.log",
+    "codesign_verify": ".logs/release-20260705T065111Z-codesign-verify.log",
+    "codesign_dv": ".logs/release-20260705T065111Z-codesign-dv.log",
+    "spctl": ".logs/release-20260705T065111Z-spctl.log"
+  },
+  "gate_results": {
+    "core_build": "passed",
+    "backend_test": "passed",
+    "capture_test": "passed",
+    "demo_build": "passed",
+    "spike_build": "passed",
+    "app_selftest": "passed"
+  },
+  "spctl_status": "rejected",
+  "notarization": {
+    "status": "not_performed"
+  }
+}

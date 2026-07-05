@@ -38,6 +38,14 @@ struct MSampler { id<MTLSamplerState> samp; };
 // Frames the present path may keep in flight; must match layer.maximumDrawableCount.
 static constexpr uint32_t kFramesInFlight = 3;
 
+static id<MTLFunction> firstFunction(id<MTLLibrary> lib, NSArray<NSString*>* names) {
+    for (NSString* name in names) {
+        id<MTLFunction> fn = [lib newFunctionWithName:name];
+        if (fn) return fn;
+    }
+    return nil;
+}
+
 MTLPixelFormat toMTL(PixFmt f) {
     switch (f) {
         case PixFmt::R8_UNORM:      return MTLPixelFormatR8Unorm;
@@ -236,8 +244,8 @@ BackendShader* MetalBackend::CreateShader(const void* vertexCode, size_t vLen,
     }
     if (!flib) { fprintf(stderr, "MetalBackend: fragment MSL compile failed: %s\n", err.localizedDescription.UTF8String); return nullptr; }
 
-    id<MTLFunction> vs = [vlib newFunctionWithName:@"vs_main"];
-    id<MTLFunction> fs = [flib newFunctionWithName:@"fs_main"];
+    id<MTLFunction> vs = firstFunction(vlib, @[ @"vs_main", @"main0", @"main" ]);
+    id<MTLFunction> fs = firstFunction(flib, @[ @"fs_main", @"main0", @"main" ]);
     if (!vs || !fs) { fprintf(stderr, "MetalBackend: missing vs_main/fs_main\n"); return nullptr; }
 
     auto* s = new MShader{ vs, fs, p->vdesc, [NSMutableDictionary dictionary] };

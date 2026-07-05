@@ -5,6 +5,13 @@ cd "$(dirname "$0")"
 mkdir -p .logs build
 SDK="$(xcrun --sdk macosx --show-sdk-path)"
 
+./check_m2_shadergen_fixture.sh > .logs/build-core-fixture-gen.log 2>&1
+./check_m2_shadergen_pal_singlepass.sh > .logs/build-core-pal-gen.log 2>&1
+./check_m2_shadergen_ntsc_adaptive_4x.sh > .logs/build-core-ntsc-gen.log 2>&1
+./check_m2_manifest.sh > .logs/build-core-manifest.log 2>&1
+./check_m2_shadergen_film_technicolor.sh > .logs/build-core-film-gen.log 2>&1
+./check_m2_shadergen_motionblur_mix_frames.sh > .logs/build-core-motionblur-gen.log 2>&1
+
 COMMON_FLAGS=(-std=c++20 -fobjc-arc -arch arm64 -mmacosx-version-min=12.3
   -isysroot "$SDK"
   -I.. -I../../ShaderGlass -I../../ShaderGC)

@@ -1,0 +1,44 @@
+--- ../ShaderGen/ShaderGen.cpp	2026-07-05 01:43:48
++++ patches/tmp/ShaderGen/ShaderGen.cpp	2026-07-05 01:44:28
+@@ -46,6 +46,21 @@
+     return result;
+ }
+ 
++static string timestampString(const char* pattern)
++{
++    const auto now = std::chrono::system_clock::now();
++    const auto tt  = std::chrono::system_clock::to_time_t(now);
++    std::tm    tm {};
++#ifdef _WIN32
++    localtime_s(&tm, &tt);
++#else
++    localtime_r(&tt, &tm);
++#endif
++    std::ostringstream oss;
++    oss << std::put_time(&tm, pattern);
++    return oss.str();
++}
++
+ void saveSource(const filesystem::path& fileName, const vector<string>& source)
+ {
+     ofstream outfile(fileName);
+@@ -870,9 +885,9 @@
+     outputPath   = (startupPath / filesystem::path(_outputPath)).lexically_normal();
+ 
+     filesystem::current_path(_inputPath);
+-    reportPath = tempPath / (std::format("{:%Y%m%d_%H%M%S}", std::chrono::system_clock::now()) + ".log");
++    reportPath = tempPath / (timestampString("%Y%m%d_%H%M%S") + ".log");
+     ofstream reportStream(reportPath);
+-    reportStream << "Starting at " << (std::format("{:%Y-%m-%d %H:%M:%S}", std::chrono::system_clock::now())) << endl;
++    reportStream << "Starting at " << timestampString("%Y-%m-%d %H:%M:%S") << endl;
+ 
+     processListTemplate();
+ 
+@@ -938,6 +953,6 @@
+         reportStream << "EXCEPTION: " << e.what() << endl;
+     }
+ 
+-    reportStream << "Finishing at " << (std::format("{:%Y-%m-%d %H:%M:%S}", std::chrono::system_clock::now())) << endl;
++    reportStream << "Finishing at " << timestampString("%Y-%m-%d %H:%M:%S") << endl;
+     reportStream.close();
+ }

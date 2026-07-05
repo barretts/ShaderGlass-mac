@@ -8,7 +8,10 @@
 using namespace metal;
 
 struct UBO  { float4x4 MVP; };
-struct Push { float4 SourceSize; float4 OriginalSize; float4 OutputSize; uint FrameCount; };
+struct Push {
+    float4 SourceSize; float4 OriginalSize; float4 OutputSize; uint FrameCount;
+    float SGIntensity; float SGScanlineStrength; float SGMaskStrength; float SGColorBoost;
+};
 
 struct VSIn  { float4 position [[attribute(0)]]; float2 texcoord [[attribute(1)]]; };
 struct VSOut { float4 position [[position]]; float2 vTexCoord; };
@@ -61,9 +64,12 @@ fragment float4 fs_main(VSOut in [[stage_in]],
     float vignette = smoothstep(1.45, 0.22, dot(centered, centered));
     float glow = max(max(col.r, col.g), col.b);
 
-    col = col * mask * scan;
+    col = col * mix(float3(1.0), mask, clamp(push.SGMaskStrength, 0.0, 1.0)) *
+          mix(1.0, scan, clamp(push.SGScanlineStrength, 0.0, 1.0));
     col += glow * float3(0.045, 0.035, 0.055);
     col *= mix(0.72, 1.03, vignette);
-    col = pow(clamp(col, 0.0, 1.0), float3(0.94));
+    float luma = dot(col, float3(0.299, 0.587, 0.114));
+    col = mix(float3(luma), col, 0.25 + clamp(push.SGColorBoost, 0.0, 1.5) * 0.75);
+    col = pow(clamp(col * push.SGIntensity, 0.0, 1.0), float3(0.94));
     return float4(col, 1.0);
 }

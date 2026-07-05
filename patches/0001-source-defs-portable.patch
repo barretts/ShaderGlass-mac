@@ -1,0 +1,21 @@
+--- ../ShaderGC/SourceDefs.h	2026-06-06 01:12:35
++++ patches/tmp/ShaderGC/SourceDefs.h	2026-07-05 01:43:14
+@@ -7,7 +7,18 @@
+ 
+ #pragma once
+ 
++#ifdef _WIN32
+ #include "framework.h"
++#else
++#include <algorithm>
++#include <cctype>
++#include <filesystem>
++#include <iomanip>
++#include <map>
++#include <sstream>
++#include <string>
++#include <vector>
++#endif
+ 
+ static inline void ltrim(std::string& s)
+ {

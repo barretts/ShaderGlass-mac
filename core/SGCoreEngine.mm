@@ -14,6 +14,28 @@ ShaderGlass macOS core engine wrapper.
 namespace sg {
 
 namespace {
+struct PassPlan
+{
+    uint32_t sourceWidth {0};
+    uint32_t sourceHeight {0};
+    uint32_t targetWidth {0};
+    uint32_t targetHeight {0};
+    PixFmt format {PixFmt::BGRA8_UNORM};
+    std::string alias;
+};
+
+static uint32_t scaledDimension(float scale, bool viewportScale, bool absoluteScale, uint32_t sourceDim, uint32_t viewportDim)
+{
+    float value = 0.0f;
+    if(absoluteScale)
+        value = scale;
+    else if(viewportScale)
+        value = static_cast<float>(viewportDim) * scale;
+    else
+        value = static_cast<float>(sourceDim) * scale;
+    return std::max<uint32_t>(1u, static_cast<uint32_t>(std::lround(value)));
+}
+
 class MslPresetDef final : public PresetDef
 {
 public:
@@ -37,6 +59,10 @@ public:
             shader.Params.push_back(ShaderParam("OriginalSize", PUSH_BUFFER, 16, 16, 0, 0, 0));
             shader.Params.push_back(ShaderParam("OutputSize", PUSH_BUFFER, 32, 16, 0, 0, 0));
             shader.Params.push_back(ShaderParam("FrameCount", PUSH_BUFFER, 48, 4, 0, 0, 0));
+            shader.Params.push_back(ShaderParam("SGIntensity", PUSH_BUFFER, 52, 4, 0.35f, 1.85f, 1.0f, 0.01f, "Overall output gain"));
+            shader.Params.push_back(ShaderParam("SGScanlineStrength", PUSH_BUFFER, 56, 4, 0.0f, 1.5f, 0.65f, 0.01f, "Scanline emphasis"));
+            shader.Params.push_back(ShaderParam("SGMaskStrength", PUSH_BUFFER, 60, 4, 0.0f, 1.5f, 0.7f, 0.01f, "Subpixel mask emphasis"));
+            shader.Params.push_back(ShaderParam("SGColorBoost", PUSH_BUFFER, 64, 4, 0.0f, 1.5f, 1.0f, 0.01f, "Color saturation boost"));
             shader.Samplers.push_back(ShaderSampler("Source", 2));
             if(i < extraSamplers.size())
             {
@@ -174,27 +200,48 @@ bool SGCoreEngine::RenderChain(BackendTexture* source,
     if(!m_backend || m_passes.empty() || !source || !target || !sourceWidth || !sourceHeight || !targetWidth || !targetHeight)
         return false;
 
-    const bool sizeChanged = m_chainWidth != targetWidth || m_chainHeight != targetHeight;
+    std::vector<PassPlan> passPlans;
+    passPlans.reserve(m_passes.size());
+    uint32_t currentSourceWidth = sourceWidth;
+    uint32_t currentSourceHeight = sourceHeight;
+    for(const auto& pass : m_passes)
+    {
+        const auto& shader = pass->m_shader;
+        PassPlan plan;
+        plan.sourceWidth = currentSourceWidth;
+        plan.sourceHeight = currentSourceHeight;
+        plan.targetWidth = scaledDimension(shader.m_scaleX, shader.m_scaleViewportX, shader.m_scaleAbsoluteX, sourceWidth, targetWidth);
+        plan.targetHeight = scaledDimension(shader.m_scaleY, shader.m_scaleViewportY, shader.m_scaleAbsoluteY, sourceHeight, targetHeight);
+        plan.format = shader.m_format;
+        plan.alias = shader.m_alias;
+        passPlans.push_back(plan);
+        currentSourceWidth = plan.targetWidth;
+        currentSourceHeight = plan.targetHeight;
+    }
+
+    const bool sizeChanged = m_chainWidth != targetWidth || m_chainHeight != targetHeight || m_sourceWidth != sourceWidth || m_sourceHeight != sourceHeight;
     if(sizeChanged)
     {
         DestroyRenderState();
+        m_sourceWidth = sourceWidth;
+        m_sourceHeight = sourceHeight;
         m_chainWidth = targetWidth;
         m_chainHeight = targetHeight;
-        m_preprocessTexture = m_backend->CreateTexture(TextureDesc {targetWidth, targetHeight, PixFmt::BGRA8_UNORM, true, false});
+        m_preprocessTexture = m_backend->CreateTexture(TextureDesc {sourceWidth, sourceHeight, m_preprocessPass->m_shader.m_format, true, false});
         if(!m_preprocessTexture)
             return false;
-        for(size_t i = 1; i < m_passes.size(); ++i)
+        for(size_t i = 0; i + 1 < passPlans.size(); ++i)
         {
-            auto* texture = m_backend->CreateTexture(TextureDesc {targetWidth, targetHeight, PixFmt::BGRA8_UNORM, true, false});
+            auto* texture = m_backend->CreateTexture(TextureDesc {passPlans[i].targetWidth, passPlans[i].targetHeight, passPlans[i].format, true, false});
             if(!texture)
                 return false;
             m_intermediateTextures.push_back(texture);
         }
         if(m_requiresFeedback)
         {
-            for(size_t i = 0; i < m_passes.size(); ++i)
+            for(const auto& plan : passPlans)
             {
-                auto* texture = m_backend->CreateTexture(TextureDesc {targetWidth, targetHeight, PixFmt::BGRA8_UNORM, true, false});
+                auto* texture = m_backend->CreateTexture(TextureDesc {plan.targetWidth, plan.targetHeight, plan.format, true, false});
                 if(!texture)
                     return false;
                 float clear[4] = {0, 0, 0, 1};
@@ -209,18 +256,16 @@ bool SGCoreEngine::RenderChain(BackendTexture* source,
     auto geometry = m_geometryProvider ? m_geometryProvider->Geometry(sourceWidth, sourceHeight, targetWidth, targetHeight)
                                        : FrameGeometry {Rect {0, 0, static_cast<int32_t>(sourceWidth), static_cast<int32_t>(sourceHeight)},
                                                         Rect {0, 0, static_cast<int32_t>(targetWidth), static_cast<int32_t>(targetHeight)}};
-    const uint32_t originalWidth = static_cast<uint32_t>(std::max<int32_t>(1, geometry.outputRect.right - geometry.outputRect.left));
-    const uint32_t originalHeight = static_cast<uint32_t>(std::max<int32_t>(1, geometry.outputRect.bottom - geometry.outputRect.top));
+    const uint32_t originalWidth = sourceWidth;
+    const uint32_t originalHeight = sourceHeight;
 
     textureSizes.insert(std::make_pair("Original", float4 {(float)originalWidth, (float)originalHeight, 1.0f / originalWidth, 1.0f / originalHeight}));
     textureSizes.insert(std::make_pair("FinalViewport", float4 {(float)targetWidth, (float)targetHeight, 1.0f / targetWidth, 1.0f / targetHeight}));
 
     std::vector<std::array<uint32_t, 4>> passSizes;
-    for(size_t i = 0; i < m_passes.size(); ++i)
+    for(const auto& plan : passPlans)
     {
-        uint32_t inW = targetWidth;
-        uint32_t inH = targetHeight;
-        passSizes.push_back({inW, inH, targetWidth, targetHeight});
+        passSizes.push_back({plan.sourceWidth, plan.sourceHeight, plan.targetWidth, plan.targetHeight});
     }
 
     std::map<std::string, BackendTexture*> resources;
@@ -244,9 +289,11 @@ bool SGCoreEngine::RenderChain(BackendTexture* source,
         BackendTexture* passTarget = (i + 1 == m_passes.size()) ? target : m_intermediateTextures[i];
         pass.m_sourceView = passSource;
         pass.m_targetView = passTarget;
-        pass.Resize((int)passSizes[i][0], (int)passSizes[i][1], (int)targetWidth, (int)targetHeight, textureSizes, passSizes);
+        pass.Resize((int)passPlans[i].sourceWidth, (int)passPlans[i].sourceHeight, (int)passPlans[i].targetWidth, (int)passPlans[i].targetHeight, textureSizes, passSizes);
         pass.Render(resources, (int)frameCount, 0, 0);
         resources["PassOutput" + std::to_string(i)] = passTarget;
+        if(!passPlans[i].alias.empty())
+            resources[passPlans[i].alias] = passTarget;
     }
 
     if(m_requiresFeedback)

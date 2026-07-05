@@ -1,0 +1,124 @@
+--- ../ShaderGC/ShaderGC.cpp	2026-07-05 01:56:03
++++ patches/tmp/ShaderGC/ShaderGC.cpp	2026-07-05 02:03:20
+@@ -86,7 +86,7 @@
+ 
+     // map declared to reflected parameters
+     std::vector<SourceShaderSampler> textures;
+-    def.params = LookupParams(def.params, textures, fragmentMetadata);
++    def.params = LookupParams(def.params, textures, vertexMetadata, fragmentMetadata);
+ 
+     ShaderDef sd;
+     sd.Format           = CopyString(def.format);
+@@ -349,38 +349,84 @@
+ 
+ std::vector<SourceShaderParam> ShaderGC::LookupParams(const std::vector<SourceShaderParam>& declaredParams, vector<SourceShaderSampler>& textures, const std::string& metadata)
+ {
+-    vector<SourceShaderParam> actualParams;
++    return LookupParams(declaredParams, textures, std::string(), metadata);
++}
+ 
+-    auto j     = json::parse(metadata);
+-    auto types = j["types"];
+-    auto ubos  = j["ubos"];
+-    for(json::iterator it = ubos.begin(); it != ubos.end(); ++it)
++std::vector<SourceShaderParam>
++ShaderGC::LookupParams(const std::vector<SourceShaderParam>& declaredParams,
++                       std::vector<SourceShaderSampler>& textures,
++                       const std::string& vertexMetadata,
++                       const std::string& fragmentMetadata)
++{
++    vector<SourceShaderParam> actualParams;
++    textures.clear();
++
++    auto appendMetadata = [&](const std::string& metadata, bool includeTextures)
+     {
+-        auto ubo     = *it;
+-        auto typeNo  = ubo.at("type");
+-        auto binding = (int)ubo.at("binding");
+-        auto type    = types.at((string)typeNo);
+-        AddParams(actualParams, declaredParams, type, binding);
+-    }
++        if(metadata.empty())
++            return;
+ 
+-    auto pcs = j["push_constants"];
+-    int  ci  = -1;
+-    for(json::iterator it = pcs.begin(); it != pcs.end(); ++it)
+-    {
+-        auto pc     = *it;
+-        auto typeNo = pc.at("type");
+-        auto type   = types.at((string)typeNo);
+-        AddParams(actualParams, declaredParams, type, ci--);
+-    }
+-
+-    auto txs = j["textures"];
+-    for(json::iterator it = txs.begin(); it != txs.end(); ++it)
+-    {
+-        auto tx = *it;
+-        textures.push_back(SourceShaderSampler((string)tx.at("name"), (int)tx.at("binding")));
+-    }
++        auto j     = json::parse(metadata);
++        auto types = j["types"];
++        auto ubos  = j["ubos"];
++        for(json::iterator it = ubos.begin(); it != ubos.end(); ++it)
++        {
++            auto ubo     = *it;
++            auto typeNo  = ubo.at("type");
++            auto binding = (int)ubo.at("binding");
++            auto type    = types.at((string)typeNo);
++            AddParams(actualParams, declaredParams, type, binding);
++        }
+ 
+-    std::sort(actualParams.begin(), actualParams.end(), [](const SourceShaderParam& a, const SourceShaderParam& b) { return a.i < b.i; });
++        auto pcs = j["push_constants"];
++        int  ci  = -1;
++        for(json::iterator it = pcs.begin(); it != pcs.end(); ++it)
++        {
++            auto pc     = *it;
++            auto typeNo = pc.at("type");
++            auto type   = types.at((string)typeNo);
++            AddParams(actualParams, declaredParams, type, ci--);
++        }
++
++        if(includeTextures)
++        {
++            auto txs = j["textures"];
++            for(json::iterator it = txs.begin(); it != txs.end(); ++it)
++            {
++                auto tx = *it;
++                textures.push_back(SourceShaderSampler((string)tx.at("name"), (int)tx.at("binding")));
++            }
++        }
++    };
++
++    appendMetadata(vertexMetadata, false);
++    appendMetadata(fragmentMetadata, true);
++
++    std::sort(textures.begin(), textures.end(), [](const SourceShaderSampler& a, const SourceShaderSampler& b) {
++        if(a.binding != b.binding)
++            return a.binding < b.binding;
++        return a.name < b.name;
++    });
++    textures.erase(std::unique(textures.begin(),
++                               textures.end(),
++                               [](const SourceShaderSampler& a, const SourceShaderSampler& b) { return a.binding == b.binding && a.name == b.name; }),
++                   textures.end());
++
++    std::sort(actualParams.begin(), actualParams.end(), [](const SourceShaderParam& a, const SourceShaderParam& b) {
++        if(a.buffer != b.buffer)
++            return a.buffer < b.buffer;
++        if(a.offset != b.offset)
++            return a.offset < b.offset;
++        if(a.i != b.i)
++            return a.i < b.i;
++        return a.name < b.name;
++    });
++    actualParams.erase(std::unique(actualParams.begin(),
++                                   actualParams.end(),
++                                   [](const SourceShaderParam& a, const SourceShaderParam& b) {
++                                       return a.buffer == b.buffer && a.offset == b.offset && a.size == b.size && a.name == b.name;
++                                   }),
++                       actualParams.end());
+ 
+     return actualParams;
+ }

@@ -1,0 +1,25 @@
+--- ../ShaderGen/ShaderGen.cpp	2026-07-05 01:44:42
++++ patches/tmp/ShaderGen/ShaderGen.cpp	2026-07-05 01:53:46
+@@ -234,6 +234,14 @@
+ 
+ pair<string, string> fxc(const filesystem::path& shaderPath, const string& profile, const string& source, ofstream& log, bool& warn)
+ {
++#if defined(__APPLE__)
++    (void)shaderPath;
++    (void)profile;
++    (void)source;
++    (void)log;
++    (void)warn;
++    throw std::runtime_error("FXC compilation is not available on macOS");
++#else
+     filesystem::path input = tempPath / shaderPath;
+     input.replace_extension("." + profile + ".hlsl");
+     filesystem::path output = tempPath / shaderPath;
+@@ -299,6 +307,7 @@
+ 
+         return make_pair(str, hashStr);
+     }
++#endif
+ }
+ 
+ string splitCode(const string& input)

@@ -12,6 +12,11 @@ SDK="$(xcrun --sdk macosx --show-sdk-path)"
 APP="build/ShaderGlass.app"
 BIN="$APP/Contents/MacOS/ShaderGlass"
 RES="$APP/Contents/Resources"
+REQUIRED_SIGN_IDENTITY="${SG_REQUIRE_SIGNING_IDENTITY:-}"
+MODE="${1:-build}"
+if [ "$MODE" = "selftest" ] && [ -z "${SG_INSTALL+x}" ]; then
+  SG_INSTALL=0
+fi
 
 # ---- compile ----
 SRC=(
@@ -26,6 +31,7 @@ FRAMEWORKS=(
   -framework Cocoa -framework Metal -framework QuartzCore
   -framework Foundation -framework CoreVideo -framework CoreMedia
   -framework ScreenCaptureKit -framework CoreGraphics -framework ImageIO
+  -framework UniformTypeIdentifiers
 )
 # Clean the bundle first so a partial/interrupted prior sign (e.g. a leftover
 # *.cstemp from a concurrent build) can't corrupt the signature of this one.
@@ -68,17 +74,36 @@ rm -f "$BIN.cstemp"   # clear any leftover from a previously-killed cert-sign at
 TIMEOUT_BIN=""
 for t in timeout gtimeout; do command -v "$t" >/dev/null 2>&1 && { TIMEOUT_BIN="$t"; break; }; done
 sign_adhoc() { echo "ad-hoc sign (grant won't survive rebuilds)"; codesign --force --sign - "$APP"; }
-if [ "${SG_SIGN_CERT:-1}" != "0" ] && security find-identity -p codesigning 2>/dev/null | grep -q "ShaderGlassDev"; then
-  echo "signing with ShaderGlassDev (stable cdhash -> Screen Recording grant survives rebuilds)"
+sign_identity() {
+  local identity="$1"
+  echo "signing with $identity (stable cdhash -> Screen Recording grant survives rebuilds)"
   if [ -n "$TIMEOUT_BIN" ]; then
-    if ! "$TIMEOUT_BIN" 20 codesign --force --sign "ShaderGlassDev" "$APP"; then
-      echo "WARN: cert sign failed/blocked (keychain prompt?) -- falling back to ad-hoc." >&2
-      echo "  Grant codesign key access once to fix; see header of build.sh." >&2
-      sign_adhoc
-    fi
+    "$TIMEOUT_BIN" 20 codesign --force --sign "$identity" "$APP"
   else
     # No timeout wrapper: cert sign may block on a GUI prompt the first time.
-    codesign --force --sign "ShaderGlassDev" "$APP" || sign_adhoc
+    codesign --force --sign "$identity" "$APP"
+  fi
+}
+
+if [ -n "$REQUIRED_SIGN_IDENTITY" ]; then
+  if [ "${SG_SIGN_CERT:-1}" = "0" ]; then
+    echo "ERROR: SG_SIGN_CERT=0 conflicts with required signing identity '$REQUIRED_SIGN_IDENTITY'." >&2
+    exit 1
+  fi
+  if ! security find-identity -p codesigning 2>/dev/null | grep -q "$REQUIRED_SIGN_IDENTITY"; then
+    echo "ERROR: required signing identity '$REQUIRED_SIGN_IDENTITY' is not available." >&2
+    exit 1
+  fi
+  if ! sign_identity "$REQUIRED_SIGN_IDENTITY"; then
+    echo "ERROR: required signing identity '$REQUIRED_SIGN_IDENTITY' failed or blocked." >&2
+    echo "Grant codesign key access once to fix; see header of build.sh." >&2
+    exit 1
+  fi
+elif [ "${SG_SIGN_CERT:-1}" != "0" ] && security find-identity -p codesigning 2>/dev/null | grep -q "ShaderGlassDev"; then
+  if ! sign_identity "ShaderGlassDev"; then
+    echo "WARN: cert sign failed/blocked (keychain prompt?) -- falling back to ad-hoc." >&2
+    echo "  Grant codesign key access once to fix; see header of build.sh." >&2
+    sign_adhoc
   fi
 else
   [ "${SG_SIGN_CERT:-1}" = "0" ] && echo "ad-hoc sign (SG_SIGN_CERT=0 set)." \
@@ -110,7 +135,9 @@ if [ "${SG_INSTALL:-1}" != "0" ]; then
   echo "installed -> $DEST (cmd-space: \"ShaderGlass\")"
 fi
 
-if [ "$1" = "selftest" ]; then
+if [ "$MODE" = "selftest" ]; then
   echo "=== selftest (offscreen golden) ==="
   "$BIN" --selftest "$PWD/build/selftest.png"
+  echo "=== selftest (split compare) ==="
+  "$BIN" --selftest-split "$PWD/build/selftest-split.png"
 fi

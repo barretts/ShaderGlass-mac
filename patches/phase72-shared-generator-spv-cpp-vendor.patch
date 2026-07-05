@@ -1,0 +1,18 @@
+--- ../ShaderGC/SPIRV.cpp	2026-07-05 01:26:35
++++ patches/tmp/ShaderGC/SPIRV.cpp	2026-07-05 01:28:17
+@@ -9,10 +9,13 @@
+ 
+ #include "SPIRV.h"
+ 
+-#include "include/spirv_hlsl.hpp"
+-#include "include/spirv_reflect.hpp"
+ #if defined(__APPLE__)
++#include "../mac/deps/SPIRV-Cross/spirv_hlsl.hpp"
++#include "../mac/deps/SPIRV-Cross/spirv_reflect.hpp"
+ #include "../mac/deps/SPIRV-Cross/spirv_msl.hpp"
++#else
++#include "include/spirv_hlsl.hpp"
++#include "include/spirv_reflect.hpp"
+ #endif
+ 
+ #ifdef _WIN32

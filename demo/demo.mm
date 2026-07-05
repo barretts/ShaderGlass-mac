@@ -30,7 +30,16 @@ static const float sVertexBuffer[] = {
      0, 0,0,1, 0,1,   0,1,0,1, 0,0,  1, 0,0,1, 1,1,  1,1,0,1, 1,0
 };
 struct UBO  { float MVP[16]; };
-struct Push { float SourceSize[4]; float OriginalSize[4]; float OutputSize[4]; uint32_t FrameCount; };
+struct Push {
+    float SourceSize[4];
+    float OriginalSize[4];
+    float OutputSize[4];
+    uint32_t FrameCount;
+    float SGIntensity;
+    float SGScanlineStrength;
+    float SGMaskStrength;
+    float SGColorBoost;
+};
 
 static std::string readFile(const char* p){ std::ifstream f(p); if(!f){fprintf(stderr,"FAIL read %s\n",p);exit(2);} std::stringstream s; s<<f.rdbuf(); return s.str(); }
 
@@ -69,6 +78,10 @@ int main(int argc, char** argv) {
     pu.OriginalSize[0]=iw; pu.OriginalSize[1]=ih; pu.OriginalSize[2]=1.0f/iw; pu.OriginalSize[3]=1.0f/ih;
     pu.OutputSize[0]=ow; pu.OutputSize[1]=oh; pu.OutputSize[2]=1.0f/ow; pu.OutputSize[3]=1.0f/oh;
     pu.FrameCount = 0;
+    pu.SGIntensity = 1.0f;
+    pu.SGScanlineStrength = 0.65f;
+    pu.SGMaskStrength = 0.70f;
+    pu.SGColorBoost = 1.0f;
     be.UpdateConstantBuffer(ubo, &u, sizeof(u));
     be.UpdateConstantBuffer(push, &pu, sizeof(pu));
 

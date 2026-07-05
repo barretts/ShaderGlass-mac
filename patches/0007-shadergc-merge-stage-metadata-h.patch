@@ -1,0 +1,13 @@
+--- ../ShaderGC/ShaderGC.h	2026-06-06 01:12:35
++++ patches/tmp/ShaderGC/ShaderGC.h	2026-07-05 02:03:20
+@@ -35,6 +35,10 @@
+ 
+     static std::vector<SourceShaderParam>
+     LookupParams(const std::vector<SourceShaderParam>& declaredParams, std::vector<SourceShaderSampler>& textures, const std::string& metadata);
++    static std::vector<SourceShaderParam> LookupParams(const std::vector<SourceShaderParam>& declaredParams,
++                                                       std::vector<SourceShaderSampler>& textures,
++                                                       const std::string& vertexMetadata,
++                                                       const std::string& fragmentMetadata);
+ 
+ private:
+     static ShaderDef  CompileSourceShader(SourceShaderDef& def, std::ostream& log, bool& warn, const ShaderCache& cache);

@@ -1,0 +1,11 @@
+--- ../ShaderGen/ShaderGen.h	2026-07-05 01:43:48
++++ patches/tmp/ShaderGen/ShaderGen.h	2026-07-05 01:44:28
+@@ -23,7 +23,7 @@
+ #include <cctype>
+ #include <locale>
+ #include <map>
+-#include <format>
++#include <ctime>
+ #include <unordered_set>
+ #include <filesystem>
+ 

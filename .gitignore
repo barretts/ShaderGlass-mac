@@ -16,8 +16,17 @@ app/build/
 # The core static library and test outputs (regenerate via core/build_core.sh)
 core/build/
 
+# ShaderGen scratch output (regenerate via core/check_m2_shadergen_*.sh)
+temp/
+
+# Patch-generation scratch copies
+patches/tmp/
+
 # Generated render outputs (regenerate via demo/build.sh)
 demo/out/
+
+# Release staging bundle; the zip/manifest/checksums are the distributable outputs.
+dist/ShaderGlass.app/
 
 # Logs, object files, compiled shader libs
 **/.logs/

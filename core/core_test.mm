@@ -12,11 +12,29 @@ through sg::IRenderBackend without the thin LivePipeline draw path.
 #include "../../ShaderGlass/ShaderPass.h"
 #include "../../ShaderGlass/CursorEmulator.h"
 #include "../../ShaderGlass/ShaderGlass.h"
+#include "../../ShaderGlass/Shaders/RetroArch/fixture/FixtureM2LocalShaderDef.h"
+#include "../../ShaderGlass/Shaders/RetroArch/fixture/FixtureM2LocalPresetDef.h"
+#include "../../ShaderGlass/Shaders/RetroArch/stock/StockStockShaderDef.h"
+#include "../../ShaderGlass/Shaders/RetroArch/pal/shaders/PalShadersPalSinglepassShaderDef.h"
+#include "../../ShaderGlass/Shaders/RetroArch/pal/PalPalSinglepassPresetDef.h"
+#include "../../ShaderGlass/Shaders/RetroArch/reshade/shaders/LUT/ReshadeShadersLUTCmyk16TextureDef.h"
+#include "../../ShaderGlass/Shaders/RetroArch/reshade/shaders/LUT/ReshadeShadersLUTLUTShaderDef.h"
+#include "../../ShaderGlass/Shaders/RetroArch/film/resources/FilmResourcesFilm_noise1TextureDef.h"
+#include "../../ShaderGlass/Shaders/RetroArch/film/shaders/FilmShadersFilm_noiseShaderDef.h"
+#include "../../ShaderGlass/Shaders/RetroArch/film/FilmTechnicolorPresetDef.h"
+#include "../../ShaderGlass/Shaders/RetroArch/crt/shaders/guest/advanced/ntsc/CrtShadersGuestAdvancedNtscNtscPass1ShaderDef.h"
+#include "../../ShaderGlass/Shaders/RetroArch/crt/shaders/guest/advanced/ntsc/CrtShadersGuestAdvancedNtscNtscPass2ShaderDef.h"
+#include "../../ShaderGlass/Shaders/RetroArch/crt/shaders/guest/advanced/ntsc/CrtShadersGuestAdvancedNtscNtscPass3ShaderDef.h"
+#include "../../ShaderGlass/Shaders/RetroArch/ntsc/NtscNtscAdaptive4xPresetDef.h"
+#include "../../ShaderGlass/Shaders/RetroArch/motionblur/shaders/MotionblurShadersMix_framesShaderDef.h"
+#include "../../ShaderGlass/Shaders/RetroArch/motionblur/MotionblurMix_framesPresetDef.h"
 #include "SGCoreEngine.h"
 #include "../backend/MetalBackend.h"
 #include "../backend/sg_image.h"
 
 #include <cstdio>
+#include <chrono>
+#include <thread>
 
 using namespace sg;
 
@@ -70,6 +88,10 @@ public:
         shader.Params.push_back(ShaderParam("OriginalSize", PUSH_BUFFER, 16, 16, 0, 0, 0));
         shader.Params.push_back(ShaderParam("OutputSize", PUSH_BUFFER, 32, 16, 0, 0, 0));
         shader.Params.push_back(ShaderParam("FrameCount", PUSH_BUFFER, 48, 4, 0, 0, 0));
+        shader.Params.push_back(ShaderParam("SGIntensity", PUSH_BUFFER, 52, 4, 0.35f, 1.85f, 1.0f, 0.01f, "Overall output gain"));
+        shader.Params.push_back(ShaderParam("SGScanlineStrength", PUSH_BUFFER, 56, 4, 0.0f, 1.5f, 0.65f, 0.01f, "Scanline emphasis"));
+        shader.Params.push_back(ShaderParam("SGMaskStrength", PUSH_BUFFER, 60, 4, 0.0f, 1.5f, 0.7f, 0.01f, "Subpixel mask emphasis"));
+        shader.Params.push_back(ShaderParam("SGColorBoost", PUSH_BUFFER, 64, 4, 0.0f, 1.5f, 1.0f, 0.01f, "Color saturation boost"));
         shader.Samplers.push_back(ShaderSampler("Source", 2));
         ShaderDefs.push_back(shader);
     }
@@ -215,6 +237,225 @@ int main(int argc, char** argv) {
         }
     }
 
+    {
+        MetalBackend generatedBackend;
+        if (!generatedBackend.Initialize(nullptr, 0, 0, false)) {
+            fprintf(stderr, "core_test: generated preset backend init failed\n");
+            return 1;
+        }
+        BackendTexture* generatedSrc = generatedBackend.CreateTexture(TextureDesc{w, h, PixFmt::BGRA8_UNORM, false, false}, input.data(), (size_t)w * 4);
+        CursorEmulator cursor;
+        ShaderGlass shaderGlass(cursor);
+        RetroArch::FixtureM2LocalPresetDef preset;
+        TestGeometryProvider geometry(w, h);
+        shaderGlass.SetShaderPreset(&preset, {});
+        shaderGlass.Initialize(nullptr, nullptr, nullptr, false, true, false, false, false, generatedBackend, &geometry, []() {}, []() {});
+        shaderGlass.Process(generatedSrc, SG_TICKS(), 1);
+        BackendTexture* generatedOut = shaderGlass.GrabOutput();
+        if (!generatedOut) {
+            fprintf(stderr, "core_test: generated preset GrabOutput failed\n");
+            return 1;
+        }
+        std::vector<uint8_t> generatedPixels((size_t)w * h * 4);
+        generatedBackend.ReadbackTexture(generatedOut, generatedPixels.data(), (size_t)w * 4);
+        generatedBackend.DestroyTexture(generatedOut);
+        generatedBackend.DestroyTexture(generatedSrc);
+        shaderGlass.Stop();
+        if (!sameBytes(input, generatedPixels)) {
+            fprintf(stderr, "core_test: generated preset output differs from input (max=%ld)\n", maxChannelDiff(input, generatedPixels));
+            return 1;
+        }
+    }
+
+    std::vector<uint8_t> palPixelsA;
+    std::vector<uint8_t> palPixelsB;
+    for (int pass = 0; pass < 2; ++pass) {
+        MetalBackend palBackend;
+        if (!palBackend.Initialize(nullptr, 0, 0, false)) {
+            fprintf(stderr, "core_test: pal-singlepass backend init failed\n");
+            return 1;
+        }
+        BackendTexture* palSrc = palBackend.CreateTexture(TextureDesc{w, h, PixFmt::BGRA8_UNORM, false, false}, input.data(), (size_t)w * 4);
+        CursorEmulator cursor;
+        ShaderGlass shaderGlass(cursor);
+        RetroArch::PalPalSinglepassPresetDef preset;
+        preset.OverrideParam("PHASE_NOISE", 0.0f);
+        TestGeometryProvider geometry(w, h);
+        shaderGlass.SetShaderPreset(&preset, {});
+        shaderGlass.Initialize(nullptr, nullptr, nullptr, false, true, false, false, false, palBackend, &geometry, []() {}, []() {});
+        shaderGlass.Process(palSrc, SG_TICKS(), 1);
+        BackendTexture* palOut = shaderGlass.GrabOutput();
+        if (!palOut) {
+            fprintf(stderr, "core_test: pal-singlepass GrabOutput failed\n");
+            return 1;
+        }
+        auto& dstPixels = (pass == 0) ? palPixelsA : palPixelsB;
+        dstPixels.resize((size_t)w * h * 4);
+        palBackend.ReadbackTexture(palOut, dstPixels.data(), (size_t)w * 4);
+        palBackend.DestroyTexture(palOut);
+        palBackend.DestroyTexture(palSrc);
+        shaderGlass.Stop();
+    }
+    if (sameBytes(input, palPixelsA)) {
+        fprintf(stderr, "core_test: pal-singlepass output unexpectedly matched input\n");
+        return 1;
+    }
+    if (!sameBytes(palPixelsA, palPixelsB)) {
+        fprintf(stderr, "core_test: pal-singlepass output was not stable across two runs (max=%ld)\n", maxChannelDiff(palPixelsA, palPixelsB));
+        return 1;
+    }
+
+    std::vector<uint8_t> filmPixelsA;
+    std::vector<uint8_t> filmPixelsB;
+    for (int pass = 0; pass < 2; ++pass) {
+        MetalBackend filmBackend;
+        if (!filmBackend.Initialize(nullptr, 0, 0, false)) {
+            fprintf(stderr, "core_test: film/technicolor backend init failed\n");
+            return 1;
+        }
+        BackendTexture* filmSrc = filmBackend.CreateTexture(TextureDesc{w, h, PixFmt::BGRA8_UNORM, false, false}, input.data(), (size_t)w * 4);
+        CursorEmulator cursor;
+        ShaderGlass shaderGlass(cursor);
+        RetroArch::FilmTechnicolorPresetDef preset;
+        preset.OverrideParam("jitter", 0.0f);
+        preset.OverrideParam("noise_toggle", 0.0f);
+        preset.OverrideParam("vig_flicker", 0.0f);
+        preset.OverrideParam("grain_str", 0.0f);
+        preset.OverrideParam("hotspot", 0.0f);
+        preset.OverrideParam("vignette", 0.0f);
+        TestGeometryProvider geometry(w, h);
+        shaderGlass.SetShaderPreset(&preset, {});
+        shaderGlass.Initialize(nullptr, nullptr, nullptr, false, true, false, false, false, filmBackend, &geometry, []() {}, []() {});
+        shaderGlass.Process(filmSrc, SG_TICKS(), 1);
+        BackendTexture* filmOut = shaderGlass.GrabOutput();
+        if (!filmOut) {
+            fprintf(stderr, "core_test: film/technicolor GrabOutput failed\n");
+            return 1;
+        }
+        auto& dstPixels = (pass == 0) ? filmPixelsA : filmPixelsB;
+        dstPixels.resize((size_t)w * h * 4);
+        filmBackend.ReadbackTexture(filmOut, dstPixels.data(), (size_t)w * 4);
+        filmBackend.DestroyTexture(filmOut);
+        filmBackend.DestroyTexture(filmSrc);
+        shaderGlass.Stop();
+    }
+    if (sameBytes(input, filmPixelsA)) {
+        fprintf(stderr, "core_test: film/technicolor output unexpectedly matched input\n");
+        return 1;
+    }
+    if (!sameBytes(filmPixelsA, filmPixelsB)) {
+        fprintf(stderr, "core_test: film/technicolor output was not stable across two runs (max=%ld)\n", maxChannelDiff(filmPixelsA, filmPixelsB));
+        return 1;
+    }
+
+    std::vector<uint8_t> ntscPixels;
+    std::vector<uint8_t> ntscPixelsNext;
+    {
+        MetalBackend ntscBackend;
+        if (!ntscBackend.Initialize(nullptr, 0, 0, false)) {
+            fprintf(stderr, "core_test: ntsc-adaptive-4x backend init failed\n");
+            return 1;
+        }
+        BackendTexture* ntscSrc = ntscBackend.CreateTexture(TextureDesc{w, h, PixFmt::BGRA8_UNORM, false, false}, input.data(), (size_t)w * 4);
+        CursorEmulator cursor;
+        ShaderGlass shaderGlass(cursor);
+        RetroArch::NtscNtscAdaptive4xPresetDef preset;
+        TestGeometryProvider geometry(w, h);
+        shaderGlass.SetShaderPreset(&preset, {});
+        shaderGlass.Initialize(nullptr, nullptr, nullptr, false, true, false, false, false, ntscBackend, &geometry, []() {}, []() {});
+        const auto frameTicks = SG_TICKS();
+        shaderGlass.Process(ntscSrc, frameTicks, 1);
+        BackendTexture* ntscOut = shaderGlass.GrabOutput();
+        if (!ntscOut) {
+            fprintf(stderr, "core_test: ntsc-adaptive-4x GrabOutput failed\n");
+            return 1;
+        }
+        ntscPixels.resize((size_t)w * h * 4);
+        ntscBackend.ReadbackTexture(ntscOut, ntscPixels.data(), (size_t)w * 4);
+        ntscBackend.DestroyTexture(ntscOut);
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        shaderGlass.Process(ntscSrc, frameTicks, 1);
+        BackendTexture* ntscOutNext = shaderGlass.GrabOutput();
+        if (!ntscOutNext) {
+            fprintf(stderr, "core_test: ntsc-adaptive-4x second GrabOutput failed\n");
+            return 1;
+        }
+        ntscPixelsNext.resize((size_t)w * h * 4);
+        ntscBackend.ReadbackTexture(ntscOutNext, ntscPixelsNext.data(), (size_t)w * 4);
+        ntscBackend.DestroyTexture(ntscOutNext);
+        ntscBackend.DestroyTexture(ntscSrc);
+        shaderGlass.Stop();
+    }
+    if (sameBytes(input, ntscPixels)) {
+        fprintf(stderr, "core_test: ntsc-adaptive-4x output unexpectedly matched input\n");
+        return 1;
+    }
+    if (sameBytes(ntscPixels, ntscPixelsNext)) {
+        fprintf(stderr, "core_test: ntsc-adaptive-4x frame 2 unexpectedly matched frame 1\n");
+        return 1;
+    }
+
+    {
+        const uint32_t hw = 16, hh = 16;
+        std::vector<uint8_t> whiteInput((size_t)hw * hh * 4, 255);
+        std::vector<uint8_t> blackInput((size_t)hw * hh * 4, 0);
+        for (size_t i = 0; i < whiteInput.size(); i += 4) {
+            whiteInput[i + 3] = 255;
+            blackInput[i + 3] = 255;
+        }
+
+        MetalBackend historyBackend;
+        if (!historyBackend.Initialize(nullptr, 0, 0, false)) {
+            fprintf(stderr, "core_test: motionblur/mix_frames backend init failed\n");
+            return 1;
+        }
+        BackendTexture* whiteSrc = historyBackend.CreateTexture(TextureDesc{hw, hh, PixFmt::BGRA8_UNORM, false, false}, whiteInput.data(), hw * 4);
+        BackendTexture* blackSrc = historyBackend.CreateTexture(TextureDesc{hw, hh, PixFmt::BGRA8_UNORM, false, false}, blackInput.data(), hw * 4);
+        CursorEmulator cursor;
+        ShaderGlass shaderGlass(cursor);
+        RetroArch::MotionblurMix_framesPresetDef preset;
+        TestGeometryProvider geometry(hw, hh);
+        shaderGlass.SetShaderPreset(&preset, {});
+        shaderGlass.Initialize(nullptr, nullptr, nullptr, false, true, false, false, false, historyBackend, &geometry, []() {}, []() {});
+
+        const auto historyTicks = SG_TICKS();
+        shaderGlass.Process(whiteSrc, historyTicks, 1);
+        BackendTexture* historyOut1 = shaderGlass.GrabOutput();
+        if (!historyOut1) {
+            fprintf(stderr, "core_test: motionblur/mix_frames first GrabOutput failed\n");
+            return 1;
+        }
+        std::vector<uint8_t> historyFrame1((size_t)hw * hh * 4);
+        historyBackend.ReadbackTexture(historyOut1, historyFrame1.data(), hw * 4);
+        historyBackend.DestroyTexture(historyOut1);
+
+        shaderGlass.Process(blackSrc, historyTicks, 2);
+        BackendTexture* historyOut2 = shaderGlass.GrabOutput();
+        if (!historyOut2) {
+            fprintf(stderr, "core_test: motionblur/mix_frames second GrabOutput failed\n");
+            return 1;
+        }
+        std::vector<uint8_t> historyFrame2((size_t)hw * hh * 4);
+        historyBackend.ReadbackTexture(historyOut2, historyFrame2.data(), hw * 4);
+        historyBackend.DestroyTexture(historyOut2);
+        historyBackend.DestroyTexture(whiteSrc);
+        historyBackend.DestroyTexture(blackSrc);
+        shaderGlass.Stop();
+
+        if (sameBytes(historyFrame1, whiteInput)) {
+            fprintf(stderr, "core_test: motionblur/mix_frames first frame ignored initial black history\n");
+            return 1;
+        }
+        if (sameBytes(historyFrame2, blackInput)) {
+            fprintf(stderr, "core_test: motionblur/mix_frames second frame ignored OriginalHistory1\n");
+            return 1;
+        }
+        if (!sameBytes(historyFrame1, historyFrame2)) {
+            fprintf(stderr, "core_test: motionblur/mix_frames symmetric white/black inputs did not converge to the same mixed frame\n");
+            return 1;
+        }
+    }
+
     BackendTexture* multi = backend.CreateTexture(TextureDesc{w, h, PixFmt::BGRA8_UNORM, true, true});
     SGCoreEngine multiEngine;
     if (!multiEngine.InitializeChain(backend, msl, std::vector<std::string>{msl, msl})) {
@@ -272,6 +513,6 @@ int main(int argc, char** argv) {
     multiEngine.Shutdown();
     feedbackEngine.Shutdown();
 
-    printf("core_test: passthrough byte-identical, callbacks fire, ShaderGlass renders, multi-pass stable, feedback accumulates (%ux%u)\n", w, h);
+    printf("core_test: passthrough byte-identical, callbacks fire, ShaderGlass renders, generated preset renders, pal-singlepass is stable, film/technicolor is stable, ntsc-adaptive-4x is phase-active, motionblur/mix_frames uses OriginalHistory1, multi-pass stable, feedback accumulates (%ux%u)\n", w, h);
     return 0;
 }

@@ -1,0 +1,11 @@
+--- ../ShaderGen/ShaderGen.cpp	2026-07-05 01:54:04
++++ patches/tmp/ShaderGen/ShaderGen.cpp	2026-07-05 02:03:20
+@@ -432,7 +432,7 @@
+     }
+ 
+     std::vector<SourceShaderSampler> textures;
+-    def.params = ShaderGC::LookupParams(def.params, textures, def.fragmentMetadata);
++    def.params = ShaderGC::LookupParams(def.params, textures, def.vertexMetadata, def.fragmentMetadata);
+ 
+     ofstream          outfile(info.outputPath);
+     std::stringstream iss(bufferString);

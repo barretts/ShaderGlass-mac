@@ -10,7 +10,10 @@
 using namespace metal;
 
 struct UBO  { float4x4 MVP; };
-struct Push { float4 SourceSize; float4 OriginalSize; float4 OutputSize; uint FrameCount; };
+struct Push {
+    float4 SourceSize; float4 OriginalSize; float4 OutputSize; uint FrameCount;
+    float SGIntensity; float SGScanlineStrength; float SGMaskStrength; float SGColorBoost;
+};
 
 struct VSIn  { float4 position [[attribute(0)]]; float2 texcoord [[attribute(1)]]; };
 struct VSOut { float4 position [[position]]; float2 vTexCoord; };
@@ -46,20 +49,22 @@ fragment float4 fs_main(VSOut in [[stage_in]],
 
     // scanlines: darken every other source row
     float scan = sin(uv.y * push.SourceSize.y * 3.14159) * 0.5 + 0.5;
-    col *= mix(0.65, 1.0, scan);
+    col *= mix(1.0, mix(0.65, 1.0, scan), clamp(push.SGScanlineStrength, 0.0, 1.0));
 
     // aperture-grille-ish RGB mask by output column
     float m = fract(in.position.x / 3.0);
     float3 mask = float3(m < 0.33 ? 1.0 : 0.7,
                          (m >= 0.33 && m < 0.66) ? 1.0 : 0.7,
                          m >= 0.66 ? 1.0 : 0.7);
-    col *= mask;
+    col *= mix(float3(1.0), mask, clamp(push.SGMaskStrength, 0.0, 1.0));
 
     // vignette
     float2 v = uv * (1.0 - uv) * 15.0;
     col *= pow(v.x * v.y, 0.25);
 
     // a little gain to offset the darkening
-    col = clamp(col * 1.25, 0.0, 1.0);
+    float luma = dot(col, float3(0.299, 0.587, 0.114));
+    col = mix(float3(luma), col, 0.25 + clamp(push.SGColorBoost, 0.0, 1.5) * 0.75);
+    col = clamp(col * 1.25 * push.SGIntensity, 0.0, 1.0);
     return float4(col, 1.0);
 }
