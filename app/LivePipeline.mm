@@ -169,6 +169,26 @@ static NSArray<SGShaderPresetDescriptor*>* SGShaderPresetCatalog(void) {
                                                   shaderFilename:@"security_cam_clean.metal"
                                                       legacyKind:SGShaderSecurityCamClean
                                                  legacyMenuIndex:22],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"hotdog-pro"
+                                                           title:@"Hotdog Pro"
+                                                  shaderFilename:@"hotdog_pro.metal"
+                                                      legacyKind:SGShaderHotdogPro
+                                                 legacyMenuIndex:23],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"dino-park"
+                                                           title:@"Dino Park"
+                                                  shaderFilename:@"dino_park.metal"
+                                                      legacyKind:SGShaderDinoPark
+                                                 legacyMenuIndex:24],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"game-boy"
+                                                           title:@"Game Boy"
+                                                  shaderFilename:@"game_boy.metal"
+                                                      legacyKind:SGShaderGameBoy
+                                                 legacyMenuIndex:25],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"snes-pop"
+                                                           title:@"SNES Pop"
+                                                  shaderFilename:@"snes_pop.metal"
+                                                      legacyKind:SGShaderSNESPop
+                                                 legacyMenuIndex:26],
         ];
     });
     return catalog;

@@ -45,7 +45,11 @@ typedef NS_ENUM(NSInteger, SGShaderKind) {
     SGShaderVectorScope = 20,
     SGShaderPlasmaDesk = 21,
     SGShaderSecurityCamClean = 22,
-    SGShaderCount       = 23,
+    SGShaderHotdogPro = 23,
+    SGShaderDinoPark = 24,
+    SGShaderGameBoy = 25,
+    SGShaderSNESPop = 26,
+    SGShaderCount       = 27,
 };
 
 @interface SGShaderPresetDescriptor : NSObject
