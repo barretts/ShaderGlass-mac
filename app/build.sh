@@ -44,6 +44,7 @@ cp ../spike/lcd_grid.metal ../spike/amber_mono.metal ../spike/vhs_soft.metal "$R
 cp ../spike/green_mono.metal ../spike/pixel_grid.metal ../spike/bloom_soft.metal "$RES/"
 cp ../spike/pvm_slots.metal "$RES/"
 cp ../../images/screen6.png "$RES/"
+cp Assets/ShaderGlass.icns "$RES/"
 
 # ---- sign: persistent cert if present (grant survives rebuilds), else ad-hoc ----
 # Detect with `-p codesigning` WITHOUT `-v`: a self-signed cert is usable for signing

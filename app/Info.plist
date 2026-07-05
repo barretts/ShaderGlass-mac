@@ -16,6 +16,8 @@
     <string>APPL</string>
     <key>CFBundleExecutable</key>
     <string>ShaderGlass</string>
+    <key>CFBundleIconFile</key>
+    <string>ShaderGlass.icns</string>
     <key>LSMinimumSystemVersion</key>
     <string>12.3</string>
     <key>NSPrincipalClass</key>
