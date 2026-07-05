@@ -129,6 +129,46 @@ static NSArray<SGShaderPresetDescriptor*>* SGShaderPresetCatalog(void) {
                                                   shaderFilename:@"amber_crt.metal"
                                                       legacyKind:SGShaderAmberCRT
                                                  legacyMenuIndex:14],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"blue-terminal"
+                                                           title:@"Blue Terminal"
+                                                  shaderFilename:@"blue_terminal.metal"
+                                                      legacyKind:SGShaderBlueTerminal
+                                                 legacyMenuIndex:15],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"hologram-glass"
+                                                           title:@"Hologram Glass"
+                                                  shaderFilename:@"hologram_glass.metal"
+                                                      legacyKind:SGShaderHologramGlass
+                                                 legacyMenuIndex:16],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"data-grid"
+                                                           title:@"Data Grid"
+                                                  shaderFilename:@"data_grid.metal"
+                                                      legacyKind:SGShaderDataGrid
+                                                 legacyMenuIndex:17],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"night-vision-hud"
+                                                           title:@"Night Vision HUD"
+                                                  shaderFilename:@"night_vision_hud.metal"
+                                                      legacyKind:SGShaderNightVisionHUD
+                                                 legacyMenuIndex:18],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"ice-crt"
+                                                           title:@"Ice CRT"
+                                                  shaderFilename:@"ice_crt.metal"
+                                                      legacyKind:SGShaderIceCRT
+                                                 legacyMenuIndex:19],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"vector-scope"
+                                                           title:@"Vector Scope"
+                                                  shaderFilename:@"vector_scope.metal"
+                                                      legacyKind:SGShaderVectorScope
+                                                 legacyMenuIndex:20],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"plasma-desk"
+                                                           title:@"Plasma Desk"
+                                                  shaderFilename:@"plasma_desk.metal"
+                                                      legacyKind:SGShaderPlasmaDesk
+                                                 legacyMenuIndex:21],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"security-cam-clean"
+                                                           title:@"Security Cam Clean"
+                                                  shaderFilename:@"security_cam_clean.metal"
+                                                      legacyKind:SGShaderSecurityCamClean
+                                                 legacyMenuIndex:22],
         ];
     });
     return catalog;

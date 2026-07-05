@@ -50,6 +50,9 @@ cp ../spike/lcd_grid.metal ../spike/amber_mono.metal ../spike/vhs_soft.metal "$R
 cp ../spike/green_mono.metal ../spike/pixel_grid.metal ../spike/bloom_soft.metal "$RES/"
 cp ../spike/pvm_slots.metal ../spike/noir_film.metal ../spike/thermal_pop.metal "$RES/"
 cp ../spike/dream_blur.metal ../spike/cyber_glow.metal ../spike/amber_crt.metal "$RES/"
+cp ../spike/blue_terminal.metal ../spike/hologram_glass.metal ../spike/data_grid.metal "$RES/"
+cp ../spike/night_vision_hud.metal ../spike/ice_crt.metal ../spike/vector_scope.metal "$RES/"
+cp ../spike/plasma_desk.metal ../spike/security_cam_clean.metal "$RES/"
 cp ../../images/screen6.png "$RES/"
 cp Assets/ShaderGlass.icns "$RES/"
 
