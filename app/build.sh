@@ -54,7 +54,7 @@ cp ../spike/blue_terminal.metal ../spike/hologram_glass.metal ../spike/data_grid
 cp ../spike/night_vision_hud.metal ../spike/ice_crt.metal ../spike/vector_scope.metal "$RES/"
 cp ../spike/plasma_desk.metal ../spike/security_cam_clean.metal "$RES/"
 cp ../spike/hotdog_pro.metal ../spike/dino_park.metal "$RES/"
-cp ../spike/game_boy.metal ../spike/snes_pop.metal "$RES/"
+cp ../spike/game_boy.metal ../spike/snes_pop.metal ../spike/green_crt.metal "$RES/"
 cp ../../images/screen6.png "$RES/"
 cp Assets/ShaderGlass.icns "$RES/"
 

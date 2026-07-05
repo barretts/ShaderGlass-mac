@@ -189,6 +189,11 @@ static NSArray<SGShaderPresetDescriptor*>* SGShaderPresetCatalog(void) {
                                                   shaderFilename:@"snes_pop.metal"
                                                       legacyKind:SGShaderSNESPop
                                                  legacyMenuIndex:26],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"green-crt"
+                                                           title:@"Green CRT"
+                                                  shaderFilename:@"green_crt.metal"
+                                                      legacyKind:SGShaderGreenCRT
+                                                 legacyMenuIndex:27],
         ];
     });
     return catalog;
