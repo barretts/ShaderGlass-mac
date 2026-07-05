@@ -124,6 +124,11 @@ static NSArray<SGShaderPresetDescriptor*>* SGShaderPresetCatalog(void) {
                                                   shaderFilename:@"cyber_glow.metal"
                                                       legacyKind:SGShaderCyberGlow
                                                  legacyMenuIndex:13],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"amber-crt"
+                                                           title:@"Amber CRT"
+                                                  shaderFilename:@"amber_crt.metal"
+                                                      legacyKind:SGShaderAmberCRT
+                                                 legacyMenuIndex:14],
         ];
     });
     return catalog;
