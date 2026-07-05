@@ -95,8 +95,8 @@ Root releases the current planning round with three director packets:
      - `plans/07-m2-manifest-ledger.md`
      - `plans/07-m2-codegen-prereqs.md`
    - current truth:
-     - Feature 7 is active bounded M2 work
-     - generator proof exists, but generator-to-runtime closure is incomplete
+     - Feature 7 pinned-manifest M2 is implemented and adopted
+     - broader corpus work is follow-on scope and requires a new bounded manifest
    - required outputs:
      - one director execution artifact
      - one feature execution packet
@@ -188,20 +188,21 @@ Current feature status for orchestration:
 | 4 Capture Picker Polish | Director B | implemented | preserve as baseline |
 | 5 Export Moment | Director B | implemented | validate against compare seam if needed |
 | 6 Private Release Build | Director B | implemented | keep release contract honest |
-| 7 Shader Inheritance M2 | Director C | planned | manifest-first entry gate |
+| 7 Shader Inheritance M2 | Director C | implemented for pinned manifest | preserve adopted baseline; expand only by new bounded corpus gate |
 
 ### Stage 5.1 - Current Delegation Round
 
 Root-created directors for the current planning pass:
-- Director A: refresh Feature 1-3 plans into preservation/regression execution packets
-- Director B: refresh Feature 4-6 plans into preservation/shipping execution packets
-- Director C: refresh Feature 7 plans into manifest-first M2 execution packets
+- Director A: preserve Feature 1-3 plans as regression execution packets
+- Director B: preserve Feature 4-6 plans as evidence/shipping execution packets
+- Director C: preserve Feature 7 pinned-manifest baseline and release only follow-on expansion packets from the adoption ledger
 
 Expected outputs from this round:
 - one root control-plane update
 - one seven-feature director and agent register
 - three director execution artifacts
 - seven feature plans with explicit agent rosters, verification artifacts, and stop gates
+- Feature 7 generated-output, parity, backend, verification, and adoption artifacts
 
 ### Stage 6 - Verification Loop
 

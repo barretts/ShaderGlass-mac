@@ -14,15 +14,20 @@ Use this packet when Director C is released for a future implementation pass.
 - mission:
   - land the smallest durable M2 inheritance slice that converts selected upstream-shaped presets into Metal-ready runtime presets
 - immutable current truth:
-  - M2 is active inheritance work, not a speculative backlog item
+  - M2 pinned-manifest inheritance is implemented and adopted as the baseline for the selected corpus
   - Phase 7.1 manifest planning exists
   - Phase 7.2 prerequisite proof exists
-  - generator integration is partially proven, not complete
-  - later engine, backend, and verification phases are still pending
+  - generator integration is proven for the mandatory manifest presets
+  - engine, backend, verification, and adoption artifacts now exist for the pinned corpus
 - owned artifacts:
   - `plans/07-shader-inheritance-m2.md`
   - `plans/07-m2-manifest-ledger.md`
   - `plans/07-m2-codegen-prereqs.md`
+  - `plans/07-m2-generated-output-manifest.md`
+  - `plans/07-m2-engine-parity-checklist.md`
+  - `plans/07-m2-backend-capability-matrix.md`
+  - `plans/07-m2-verification-bundle.md`
+  - `plans/07-m2-adoption-decision.md`
 - release rule:
   - do not expand scope beyond the pinned manifest without updating the ledger first
 - implementation objective:
@@ -95,26 +100,33 @@ Every subordinate release packet should include:
 ### Stage 2 - Current State
 
 Verified current state:
-- M2 remains planned, not implemented.
+- M2 is implemented for the pinned mandatory manifest and remains intentionally bounded.
 - The mac app already renders through the shared engine, which makes inheritance work realistic.
-- Existing generated upstream assets are still DXBC-oriented and not directly consumable by Metal.
+- Metal-ready generated payloads for the pinned manifest are consumed by the mac core path.
 - Phase 7.1 manifest work is already captured in `plans/07-m2-manifest-ledger.md`.
 - Phase 7.2 prerequisite proof and first `GenerateMSL(...)` proof are already captured in `plans/07-m2-codegen-prereqs.md` and `.logs/check-m2-generate-msl.log`.
+- Mandatory preset generated output and binding notes are captured in `plans/07-m2-generated-output-manifest.md`.
+- Engine parity is captured in `plans/07-m2-engine-parity-checklist.md`.
+- Metal backend capability is captured in `plans/07-m2-backend-capability-matrix.md`.
+- Verification and live smoke evidence are captured in `plans/07-m2-verification-bundle.md`.
+- Runtime adoption and follow-on scope are captured in `plans/07-m2-adoption-decision.md`.
 
 ### Stage 3 - Active Next Work
 
 Next bounded task:
-- preserve the manifest-first ledger and move the next agent onto generator plumbing that turns selected presets into mac-consumable payloads
+- preserve the pinned manifest baseline and release only follow-on agents for explicitly recorded expansion work
 
-Only after that:
-1. finish generator integration for the manifest
-2. close engine semantics needed by the manifest
-3. prove backend capability
-4. freeze verification evidence
+Completed for the pinned corpus:
+1. generator integration for the mandatory manifest
+2. engine semantics needed by the manifest
+3. backend capability proof
+4. verification evidence, including live smoke
+5. adoption decision and follow-on ledger
 
 Immediate root handoff rule:
 - Director C does not re-run `m2-preset-agent` work unless the manifest changes
-- Director C does not release `m2-engine-agent` or later agents until generator output exists for at least one mandatory preset
+- Director C does not release broader-corpus work until the follow-on ledger is turned into a new bounded manifest
+- Director C treats binding-map extraction automation, histories 2-7, feedback presets, mipmaps, broader corpus support, and Windows cleanup as follow-on work
 
 ### Stage 4 - Phase Release Packets
 
@@ -139,6 +151,8 @@ Immediate root handoff rule:
   - `m2-codegen-agent`
 - required artifact:
   - generated-output manifest with per-pass binding maps
+- current artifact:
+  - `plans/07-m2-generated-output-manifest.md`
 - engine may assume:
   - at least one mandatory preset generates repeatably
   - output pass order and symbol names are stable enough to consume
@@ -152,6 +166,8 @@ Immediate root handoff rule:
   - `m2-engine-agent`
 - required artifact:
   - parity checklist mapping each manifest behavior to concrete engine code paths
+- current artifact:
+  - `plans/07-m2-engine-parity-checklist.md`
 - backend may assume:
   - required formats, copies, textures, and samplers are now concrete instead of speculative
 - backend must still prove:
@@ -163,10 +179,26 @@ Immediate root handoff rule:
   - `m2-backend-agent`
 - required artifact:
   - backend capability matrix with explicit supported, deferred, or blocking status
+- current artifact:
+  - `plans/07-m2-backend-capability-matrix.md`
 - verification may assume:
   - remaining failures are render correctness or integration failures, not unknown backend capability
 - verification must still prove:
   - offscreen goldens, history behavior, static textures, and one app-level smoke
+- current artifact:
+  - `plans/07-m2-verification-bundle.md`
+
+#### Packet E - Verification Intake To Adoption
+
+- producer:
+  - `m2-verification-agent`
+- required artifact:
+  - verification bundle with core/backend/capture/app logs and live smoke outputs
+- current artifact:
+  - `plans/07-m2-adoption-decision.md`
+- root may assume:
+  - the pinned M2 corpus is adopted as the current generated shared-engine baseline
+  - broader corpus expansion is follow-on scope, not implicit unfinished M2 work
 
 ### Stage 5 - Director Verification Bundle
 
@@ -177,6 +209,7 @@ Director C is not done when chat says the work is ready. Director C is done when
 - engine parity checklist
 - backend capability matrix
 - verification bundle with test logs and one live smoke result
+- adoption decision note
 
 Any missing artifact keeps the phase in progress even if partial code exists.
 
@@ -201,3 +234,4 @@ Director C is operating correctly when:
 - the manifest remains small and explicit
 - every engine or backend change is traceable to a mandatory preset requirement
 - M2 evidence can be reviewed independently from chat history
+- follow-on corpus work starts from a new bounded packet instead of reopening the completed pinned-manifest gate

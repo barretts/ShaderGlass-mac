@@ -26,7 +26,8 @@ This file is the durable implementation packet for Feature 7. A future implement
   - generator integration is now proven for the mandatory manifest presets through executable gates and host-backed core evidence
   - the portable shared-engine path now rotates `OriginalHistoryN` on macOS for manifest-selected history presets
   - the current mac build stack is green across core, backend, capture, and app selftest
-  - live capture smoke remains the next verification gap
+  - live display, window, and overlay smoke have been run against the generated shared-engine path
+  - adoption is explicit for the pinned manifest; broader corpus support remains follow-on scope
 - non-goals for this packet:
   - broad preset corpus support
   - UI parity work
@@ -34,6 +35,11 @@ This file is the durable implementation packet for Feature 7. A future implement
 - required consumed artifacts:
   - `plans/07-m2-manifest-ledger.md`
   - `plans/07-m2-codegen-prereqs.md`
+  - `plans/07-m2-generated-output-manifest.md`
+  - `plans/07-m2-engine-parity-checklist.md`
+  - `plans/07-m2-backend-capability-matrix.md`
+  - `plans/07-m2-verification-bundle.md`
+  - `plans/07-m2-adoption-decision.md`
   - latest `.logs/check-m2-*.log` evidence named in those support artifacts
 
 ## Agent Tree
@@ -58,9 +64,10 @@ Current phase ledger:
 - Phase 7.1 manifest selection: complete as a planning artifact
 - Phase 7.2 prerequisite proof: complete as a planning artifact
 - Phase 7.2 generator integration: complete for the mandatory manifest set
-- Phase 7.3 engine semantics parity: partially complete for mandatory history rotation and static-texture execution
-- Phase 7.4 backend capability closure: partially proven by host-backed core evidence
-- Phase 7.5 verification and promotion: pending live smoke coverage
+- Phase 7.3 engine semantics parity: complete for the mandatory manifest set
+- Phase 7.4 backend capability closure: complete for the mandatory manifest set
+- Phase 7.5 verification and promotion: complete for the mandatory manifest set
+- Phase 7.6 adoption gate: complete; pinned manifest adopted, broader corpus deferred to follow-on packets
 
 Current verified runtime note:
 - `pal-singlepass` remains the stable generated-preset proof for cold-run repeatability
@@ -117,6 +124,13 @@ Additional verified generator evidence:
 Concrete implementation note:
 - `../ShaderGen/ShaderGen.cpp` now sanitizes nested preset log paths on mac and throws on shader-output open/write failure instead of reporting a false `OK`
 - `../ShaderGlass/ShaderGlass.cpp` portable path now recomputes manifest-forced history requirements after resize/reset and rotates `OriginalHistoryN` textures between frames
+
+Current durable M2 artifacts:
+- generated output: `plans/07-m2-generated-output-manifest.md`
+- engine parity: `plans/07-m2-engine-parity-checklist.md`
+- backend capability: `plans/07-m2-backend-capability-matrix.md`
+- verification bundle: `plans/07-m2-verification-bundle.md`
+- adoption decision: `plans/07-m2-adoption-decision.md`
 
 ## Procedure
 
@@ -217,6 +231,9 @@ Required artifact:
   - binding map per pass
   - generation failures, if any
 
+Current artifact:
+- `plans/07-m2-generated-output-manifest.md`
+
 Prerequisite artifact:
 - `plans/07-m2-codegen-prereqs.md`
 - executable gate: `core/check_m2_codegen_deps.sh`
@@ -287,6 +304,9 @@ Required artifact:
 - A parity checklist that maps each manifest preset requirement to the exact engine behavior that satisfies it.
 - A file-touch ledger listing which shared-engine or bridge files changed for each required behavior.
 
+Current artifact:
+- `plans/07-m2-engine-parity-checklist.md`
+
 Exit gate:
 - All behaviors needed by mandatory presets are implemented or consciously deferred.
 - No implementation step depends on “manual patching” generated presets by hand after codegen.
@@ -325,6 +345,9 @@ Required artifact:
 - Backend capability matrix listing each manifest feature and the exact Metal support proof.
 - Any deferred preset requirement must name the exact backend limitation that forced deferral.
 
+Current artifact:
+- `plans/07-m2-backend-capability-matrix.md`
+
 Exit gate:
 - Every mandatory preset requirement is marked `supported`, `deferred out of manifest`, or `blocking`.
 - No backend assumption remains implicit.
@@ -360,6 +383,9 @@ Work:
 - Add feedback and history fixtures proving frame-to-frame dependency.
 - Add one live smoke that exercises a generated preset through the mac app.
 - Capture a final evidence bundle with generated-output manifest, test logs, and smoke outputs.
+
+Current artifact:
+- `plans/07-m2-verification-bundle.md`
 
 Exit gate:
 - Mandatory presets compile, instantiate, and render offscreen through the shared engine.
@@ -407,6 +433,9 @@ Phase release packet:
 - required artifacts:
   - adoption decision note
   - follow-on ledger
+
+Current artifact:
+- `plans/07-m2-adoption-decision.md`
 
 ## File Touchpoints By Agent
 
