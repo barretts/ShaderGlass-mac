@@ -219,6 +219,136 @@ static NSArray<SGShaderPresetDescriptor*>* SGShaderPresetCatalog(void) {
                                                   shaderFilename:@"c64_monitor.metal"
                                                       legacyKind:SGShaderC64Monitor
                                                  legacyMenuIndex:32],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"crt-royale-style"
+                                                           title:@"CRT Royale"
+                                                  shaderFilename:@"crt_royale_style.metal"
+                                                      legacyKind:SGShaderCRTRoyaleStyle
+                                                 legacyMenuIndex:33],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"guest-advanced-style"
+                                                           title:@"Guest Advanced"
+                                                  shaderFilename:@"guest_advanced_style.metal"
+                                                      legacyKind:SGShaderGuestAdvancedStyle
+                                                 legacyMenuIndex:34],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"trinitron-style"
+                                                           title:@"Trinitron"
+                                                  shaderFilename:@"trinitron_style.metal"
+                                                      legacyKind:SGShaderTrinitronStyle
+                                                 legacyMenuIndex:35],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"dos-vga-monitor"
+                                                           title:@"DOS VGA"
+                                                  shaderFilename:@"dos_vga_monitor.metal"
+                                                      legacyKind:SGShaderDOSVGAMonitor
+                                                 legacyMenuIndex:36],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"ntsc-svideo"
+                                                           title:@"NTSC S-Video"
+                                                  shaderFilename:@"ntsc_svideo.metal"
+                                                      legacyKind:SGShaderNTSCSVideo
+                                                 legacyMenuIndex:37],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"rf-dirty"
+                                                           title:@"Dirty RF"
+                                                  shaderFilename:@"rf_dirty.metal"
+                                                      legacyKind:SGShaderRFDirty
+                                                 legacyMenuIndex:38],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"artifact-colors"
+                                                           title:@"Artifact Colors"
+                                                  shaderFilename:@"artifact_colors.metal"
+                                                      legacyKind:SGShaderArtifactColors
+                                                 legacyMenuIndex:39],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"tv-out"
+                                                           title:@"TV Out"
+                                                  shaderFilename:@"tv_out.metal"
+                                                      legacyKind:SGShaderTVOut
+                                                 legacyMenuIndex:40],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"nes-composite"
+                                                           title:@"NES Composite"
+                                                  shaderFilename:@"nes_composite.metal"
+                                                      legacyKind:SGShaderNESComposite
+                                                 legacyMenuIndex:41],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"genesis-rgb"
+                                                           title:@"Genesis RGB"
+                                                  shaderFilename:@"genesis_rgb.metal"
+                                                      legacyKind:SGShaderGenesisRGB
+                                                 legacyMenuIndex:42],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"playstation-dirty"
+                                                           title:@"PlayStation Dirty"
+                                                  shaderFilename:@"playstation_dirty.metal"
+                                                      legacyKind:SGShaderPlayStationDirty
+                                                 legacyMenuIndex:43],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"n64-soft"
+                                                           title:@"N64 Soft"
+                                                  shaderFilename:@"n64_soft.metal"
+                                                      legacyKind:SGShaderN64Soft
+                                                 legacyMenuIndex:44],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"super-game-boy"
+                                                           title:@"Super Game Boy"
+                                                  shaderFilename:@"super_game_boy.metal"
+                                                      legacyKind:SGShaderSuperGameBoy
+                                                 legacyMenuIndex:45],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"gba-lcd"
+                                                           title:@"GBA LCD"
+                                                  shaderFilename:@"gba_lcd.metal"
+                                                      legacyKind:SGShaderGBALCD
+                                                 legacyMenuIndex:46],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"game-gear-lcd"
+                                                           title:@"Game Gear LCD"
+                                                  shaderFilename:@"game_gear_lcd.metal"
+                                                      legacyKind:SGShaderGameGearLCD
+                                                 legacyMenuIndex:47],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"adaptive-sharpen"
+                                                           title:@"Adaptive Sharpen"
+                                                  shaderFilename:@"adaptive_sharpen.metal"
+                                                      legacyKind:SGShaderAdaptiveSharpen
+                                                 legacyMenuIndex:48],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"anime4k-style"
+                                                           title:@"Anime4K"
+                                                  shaderFilename:@"anime4k_style.metal"
+                                                      legacyKind:SGShaderAnime4KStyle
+                                                 legacyMenuIndex:49],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"deband-soft"
+                                                           title:@"Deband Soft"
+                                                  shaderFilename:@"deband_soft.metal"
+                                                      legacyKind:SGShaderDebandSoft
+                                                 legacyMenuIndex:50],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"film-grain-style"
+                                                           title:@"Film Grain"
+                                                  shaderFilename:@"film_grain.metal"
+                                                      legacyKind:SGShaderFilmGrainStyle
+                                                 legacyMenuIndex:51],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"grade-cinema"
+                                                           title:@"Grade Cinema"
+                                                  shaderFilename:@"grade_cinema.metal"
+                                                      legacyKind:SGShaderGradeCinema
+                                                 legacyMenuIndex:52],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"natural-vision-style"
+                                                           title:@"Natural Vision"
+                                                  shaderFilename:@"natural_vision.metal"
+                                                      legacyKind:SGShaderNaturalVisionStyle
+                                                 legacyMenuIndex:53],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"ascii-edges"
+                                                           title:@"ASCII Edges"
+                                                  shaderFilename:@"ascii_edges.metal"
+                                                      legacyKind:SGShaderASCIIEdges
+                                                 legacyMenuIndex:54],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"cmyk-halftone"
+                                                           title:@"CMYK Halftone"
+                                                  shaderFilename:@"cmyk_halftone.metal"
+                                                      legacyKind:SGShaderCMYKHalftone
+                                                 legacyMenuIndex:55],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"edge-detect"
+                                                           title:@"Edge Detect"
+                                                  shaderFilename:@"edge_detect.metal"
+                                                      legacyKind:SGShaderEdgeDetect
+                                                 legacyMenuIndex:56],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"ega-monitor"
+                                                           title:@"EGA Monitor"
+                                                  shaderFilename:@"ega_monitor.metal"
+                                                      legacyKind:SGShaderEGAMonitor
+                                                 legacyMenuIndex:57],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"test-pattern"
+                                                           title:@"Test Pattern"
+                                                  shaderFilename:@"test_pattern.metal"
+                                                      legacyKind:SGShaderTestPattern
+                                                 legacyMenuIndex:58],
         ];
     });
     return catalog;
