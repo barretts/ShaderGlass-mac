@@ -61,6 +61,59 @@ static int runSelftest(NSString* outPath) {
     }
 }
 
+static int runPresetRender(NSString* presetID, NSString* outPath) {
+    @autoreleasepool {
+        NSString* res = [[NSBundle mainBundle] resourcePath];
+        NSFileManager* fm = [NSFileManager defaultManager];
+        BOOL bundled = res && [fm fileExistsAtPath:[res stringByAppendingPathComponent:@"passthrough.metal"]];
+        NSString* shaderDir = bundled ? res : @"../spike";
+        NSString* img = bundled ? [res stringByAppendingPathComponent:@"screen6.png"]
+                                : @"../../images/screen6.png";
+        LivePipeline* pipe = [[LivePipeline alloc] initWithLayer:nil width:0 height:0 shaderDir:shaderDir];
+        if (!pipe) {
+            fprintf(stderr, "preset-render FAIL: pipeline init (shaderDir=%s)\n", shaderDir.UTF8String);
+            return 2;
+        }
+        if (![pipe setStaticImagePath:img]) {
+            fprintf(stderr, "preset-render FAIL: image load (%s)\n", img.UTF8String);
+            return 2;
+        }
+        if (![pipe setShaderPresetIdentifier:presetID]) {
+            fprintf(stderr, "preset-render FAIL: preset not found (%s)\n", presetID.UTF8String);
+            return 3;
+        }
+        if (![pipe renderOffscreenToPNG:outPath]) {
+            fprintf(stderr, "preset-render FAIL: offscreen render (%s)\n", presetID.UTF8String);
+            return 1;
+        }
+        fprintf(stderr, "preset-render OK: %s -> %s\n", presetID.UTF8String, outPath.UTF8String);
+        return 0;
+    }
+}
+
+static int runRenderAllPresets(NSString* outDir) {
+    @autoreleasepool {
+        NSFileManager* fm = [NSFileManager defaultManager];
+        NSError* mkdirError = nil;
+        if (![fm createDirectoryAtPath:outDir withIntermediateDirectories:YES attributes:nil error:&mkdirError]) {
+            fprintf(stderr, "render-all FAIL: mkdir %s (%s)\n",
+                    outDir.UTF8String,
+                    mkdirError.localizedDescription.UTF8String);
+            return 4;
+        }
+        NSArray<SGShaderPresetDescriptor*>* catalog = [LivePipeline shaderPresetCatalog];
+        for (SGShaderPresetDescriptor* descriptor in catalog) {
+            NSString* outPath = [outDir stringByAppendingPathComponent:[descriptor.identifier stringByAppendingString:@".png"]];
+            int rc = runPresetRender(descriptor.identifier, outPath);
+            if (rc != 0) return rc;
+        }
+        fprintf(stderr, "render-all OK: wrote %lu preset renders to %s\n",
+                (unsigned long)catalog.count,
+                outDir.UTF8String);
+        return 0;
+    }
+}
+
 static int runSplitSelftest(NSString* outPath) {
     @autoreleasepool {
         NSString* res = [[NSBundle mainBundle] resourcePath];
@@ -443,6 +496,11 @@ int main(int argc, const char* argv[]) {
                 return runSelftest([NSString stringWithUTF8String:argv[i+1]]);
             if (strcmp(argv[i], "--selftest-split") == 0 && i + 1 < argc)
                 return runSplitSelftest([NSString stringWithUTF8String:argv[i+1]]);
+            if (strcmp(argv[i], "--render-preset") == 0 && i + 2 < argc)
+                return runPresetRender([NSString stringWithUTF8String:argv[i+1]],
+                                       [NSString stringWithUTF8String:argv[i+2]]);
+            if (strcmp(argv[i], "--render-all-presets") == 0 && i + 1 < argc)
+                return runRenderAllPresets([NSString stringWithUTF8String:argv[i+1]]);
             if (strcmp(argv[i], "--smoke-display") == 0 && i + 1 < argc)
                 return runCaptureSmoke(NO, [NSString stringWithUTF8String:argv[i+1]]);
             if (strcmp(argv[i], "--smoke-window") == 0 && i + 1 < argc)
