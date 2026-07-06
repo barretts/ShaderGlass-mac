@@ -194,6 +194,31 @@ static NSArray<SGShaderPresetDescriptor*>* SGShaderPresetCatalog(void) {
                                                   shaderFilename:@"green_crt.metal"
                                                       legacyKind:SGShaderGreenCRT
                                                  legacyMenuIndex:27],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"ntsc-composite"
+                                                           title:@"NTSC Composite"
+                                                  shaderFilename:@"ntsc_composite.metal"
+                                                      legacyKind:SGShaderNTSCComposite
+                                                 legacyMenuIndex:28],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"crt-geom-style"
+                                                           title:@"CRT Geom"
+                                                  shaderFilename:@"crt_geom_style.metal"
+                                                      legacyKind:SGShaderCRTGeomStyle
+                                                 legacyMenuIndex:29],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"crt-easymode-style"
+                                                           title:@"CRT Easymode"
+                                                  shaderFilename:@"crt_easymode_style.metal"
+                                                      legacyKind:SGShaderCRTEasymodeStyle
+                                                 legacyMenuIndex:30],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"newpixie-crt"
+                                                           title:@"Newpixie CRT"
+                                                  shaderFilename:@"newpixie_crt.metal"
+                                                      legacyKind:SGShaderNewpixieCRT
+                                                 legacyMenuIndex:31],
+            [[SGShaderPresetDescriptor alloc] initWithIdentifier:@"c64-monitor"
+                                                           title:@"C64 Monitor"
+                                                  shaderFilename:@"c64_monitor.metal"
+                                                      legacyKind:SGShaderC64Monitor
+                                                 legacyMenuIndex:32],
         ];
     });
     return catalog;

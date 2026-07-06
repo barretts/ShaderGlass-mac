@@ -55,6 +55,8 @@ cp ../spike/night_vision_hud.metal ../spike/ice_crt.metal ../spike/vector_scope.
 cp ../spike/plasma_desk.metal ../spike/security_cam_clean.metal "$RES/"
 cp ../spike/hotdog_pro.metal ../spike/dino_park.metal "$RES/"
 cp ../spike/game_boy.metal ../spike/snes_pop.metal ../spike/green_crt.metal "$RES/"
+cp ../spike/ntsc_composite.metal ../spike/crt_geom_style.metal ../spike/crt_easymode_style.metal "$RES/"
+cp ../spike/newpixie_crt.metal ../spike/c64_monitor.metal "$RES/"
 cp ../../images/screen6.png "$RES/"
 cp Assets/ShaderGlass.icns "$RES/"
 

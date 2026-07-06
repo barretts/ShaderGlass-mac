@@ -50,7 +50,12 @@ typedef NS_ENUM(NSInteger, SGShaderKind) {
     SGShaderGameBoy = 25,
     SGShaderSNESPop = 26,
     SGShaderGreenCRT = 27,
-    SGShaderCount       = 28,
+    SGShaderNTSCComposite = 28,
+    SGShaderCRTGeomStyle = 29,
+    SGShaderCRTEasymodeStyle = 30,
+    SGShaderNewpixieCRT = 31,
+    SGShaderC64Monitor = 32,
+    SGShaderCount       = 33,
 };
 
 @interface SGShaderPresetDescriptor : NSObject
