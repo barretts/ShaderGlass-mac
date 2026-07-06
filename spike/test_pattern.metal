@@ -9,8 +9,8 @@ vertex VSOut vs_main(VSIn in [[stage_in]], constant UBO& u [[buffer(0)]], consta
 fragment float4 fs_main(VSOut in [[stage_in]], constant Push& p [[buffer(1)]], texture2d<float> Source [[texture(2)]], sampler s [[sampler(2)]]) {
     float2 uv=in.vTexCoord;
     float3 base=Source.sample(s,uv).rgb;
-    float2 overlayMin=float2(0.03,0.03);
-    float2 overlayMax=float2(0.30,0.14);
+    float2 overlayMin=float2(0.025,0.035);
+    float2 overlayMax=float2(0.17,0.085);
     if (uv.x < overlayMin.x || uv.x > overlayMax.x || uv.y < overlayMin.y || uv.y > overlayMax.y) {
         return float4(clamp(base * p.SGIntensity, 0.0, 1.0), 1.0);
     }
