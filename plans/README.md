@@ -55,7 +55,7 @@ Director release rule:
 - Feature 4: implemented baseline, preserve and regression-check against app changes
 - Feature 5: implemented baseline, preserve export contract against compare and resize changes
 - Feature 6: implemented baseline, keep release truthfulness and gate discipline
-- Feature 7: planned, next step is manifest-first M2 scope control
+- Feature 7: pinned-manifest M2 implemented and adopted; use `09-popular-shaderglass-filters.md` for the next popular-filter expansion slice
 
 ## How To Use This Plan Set
 
